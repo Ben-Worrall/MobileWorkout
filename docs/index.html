@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MobileWorkout</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #080d1a;
+      --bg2: #0c1221;
+      --border: #1b2742;
+      --accent: #4f7cff;
+      --text: #dde3f0;
+      --text-dim: #7a8aaa;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 20px; padding: 48px 40px; max-width: 480px; width: 100%; text-align: center; }
+    .icon { font-size: 56px; margin-bottom: 24px; }
+    h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+    .sub { font-size: 16px; color: var(--text-dim); margin-bottom: 32px; line-height: 1.6; }
+    .features { text-align: left; background: var(--bg); border-radius: 12px; padding: 20px; margin-bottom: 32px; display: flex; flex-direction: column; gap: 10px; }
+    .feature { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--text-dim); }
+    .feature-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; flex-shrink: 0; }
+    .btn { display: inline-flex; align-items: center; gap: 10px; background: var(--accent); color: white; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 600; transition: opacity 0.15s; }
+    .btn:hover { opacity: 0.85; }
+    .btn svg { flex-shrink: 0; }
+    .note { font-size: 12px; color: var(--text-dim); margin-top: 16px; }
+    .github { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); text-decoration: none; font-size: 13px; margin-top: 24px; border: 1px solid var(--border); padding: 8px 16px; border-radius: 8px; transition: border-color 0.15s; }
+    .github:hover { border-color: var(--accent); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🏋️</div>
+    <h1>MobileWorkout</h1>
+    <p class="sub">A clean, offline workout tracker for Android. Log exercises, track progress, build routines.</p>
+
+    <div class="features">
+      <div class="feature"><div class="feature-dot"></div>Log sets, reps & weight in real time</div>
+      <div class="feature"><div class="feature-dot"></div>Build custom workout routines</div>
+      <div class="feature"><div class="feature-dot"></div>Full workout history</div>
+      <div class="feature"><div class="feature-dot"></div>30+ built-in exercises</div>
+      <div class="feature"><div class="feature-dot"></div>Works 100% offline</div>
+    </div>
+
+    <a class="btn" href="https://github.com/Ben-Worrall/MobileWorkout/releases/latest/download/MobileWorkout.apk">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Download APK
+    </a>
+    <p class="note">Android only · Allow installs from unknown sources in settings</p>
+
+    <br />
+    <a class="github" href="https://github.com/Ben-Worrall/MobileWorkout">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12"/></svg>
+      View on GitHub
+    </a>
+  </div>
+</body>
+</html>
