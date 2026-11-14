@@ -5,16 +5,19 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write  # needed to create releases; nothing else
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -23,13 +26,13 @@ jobs:
         run: npm ci
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@7a6d8a8234af8eb26422e24e3006232cccaa061b  # v4.6.0
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@00854ea68a109d263e39d95b7360dc14c58d4f29  # v3.2.1
 
       - name: Run Expo prebuild
         run: npx expo prebuild --platform android --no-install
@@ -38,15 +41,33 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/gymnote.keystore
 
+      - name: Write signing config
+        run: |
+          cat >> android/gradle.properties <<EOF
+          MYAPP_UPLOAD_STORE_FILE=gymnote.keystore
+          MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}
+          MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.KEY_ALIAS }}
+          MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      - name: Configure release signing in app/build.gradle
+        run: |
+          sed -i '/^android {/a\
+              signingConfigs {\
+                  release {\
+                      storeFile file(MYAPP_UPLOAD_STORE_FILE)\
+                      storePassword MYAPP_UPLOAD_STORE_PASSWORD\
+                      keyAlias MYAPP_UPLOAD_KEY_ALIAS\
+                      keyPassword MYAPP_UPLOAD_KEY_PASSWORD\
+                  }\
+              }' android/app/build.gradle
+          sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.release/' android/app/build.gradle
+
       - name: Build release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease \
-            -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/gymnote.keystore \
-            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+          ./gradlew assembleRelease --no-daemon --quiet
 
       - name: Rename APK
         run: mv android/app/build/outputs/apk/release/app-release.apk GymNote.apk
@@ -56,7 +77,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@e7a8f85e1c67a31e6ed99a94b41bd0b71bbee6b8  # v2.3.2
         with:
           tag_name: ${{ steps.version.outputs.VERSION }}
           name: Gym Note ${{ steps.version.outputs.VERSION }}
