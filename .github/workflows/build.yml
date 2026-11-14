@@ -31,8 +31,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@00854ea68a109d263e39d95b7360dc14c58d4f29  # v3.2.1
+      - name: Install Android SDK components
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Run Expo prebuild
         run: npx expo prebuild --platform android --no-install
