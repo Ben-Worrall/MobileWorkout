@@ -34,7 +34,7 @@ jobs:
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
       - name: Run Expo prebuild
-        run: npx expo prebuild --platform android --no-install
+        run: npx expo prebuild --platform android
 
       - name: Decode keystore
         run: |
@@ -44,7 +44,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --quiet \
+          ./gradlew assembleRelease --no-daemon \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/android/app/gymnote.keystore \
             -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
