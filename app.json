@@ -22,7 +22,8 @@
     },
     "plugins": [
       "expo-router",
-      "./plugins/withAndroidSettingsFix"
+      "./plugins/withAndroidSettingsFix",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": false
