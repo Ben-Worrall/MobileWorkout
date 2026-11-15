@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  TextInput, Modal, Alert, FlatList, KeyboardAvoidingView, Platform, Animated,
+  TextInput, Modal, Alert, FlatList, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,10 +10,10 @@ import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
 import { BUILTIN_EXERCISES } from '../constants/exercises';
 import {
   getTemplate, getAllExercises, createSession, seedExercises,
-  logSet, deleteSet, finishSession, markScheduledComplete, uid,
+  logSet, deleteSet, finishSession, markScheduledComplete, uid, getSetting,
 } from '../utils/database';
 
-const DEFAULT_REST = 90; // seconds
+const DEFAULT_REST = 90; // fallback if no setting saved
 
 function formatTime(ms) {
   const s = Math.floor(ms / 1000);
@@ -110,19 +110,19 @@ function ExerciseBlock({ exercise, sets, onAddSet, onDeleteSet, lastSet }) {
 
 // ── Rest Timer Overlay ───────────────────────────────────────────────────────
 
-function RestTimer({ visible, onDismiss }) {
-  const [secs, setSecs] = useState(DEFAULT_REST);
+function RestTimer({ visible, duration = DEFAULT_REST, onDismiss }) {
+  const [secs, setSecs] = useState(duration);
   const [running, setRunning] = useState(true);
   const intervalRef = useRef(null);
-  const progress = useRef(new Animated.Value(1)).current;
+  const totalRef = useRef(duration);
 
   useEffect(() => {
     if (!visible) return;
-    setSecs(DEFAULT_REST);
+    totalRef.current = duration;
+    setSecs(duration);
     setRunning(true);
-    Animated.timing(progress, { toValue: 0, duration: DEFAULT_REST * 1000, useNativeDriver: false }).start();
     return () => clearInterval(intervalRef.current);
-  }, [visible]);
+  }, [visible, duration]);
 
   useEffect(() => {
     clearInterval(intervalRef.current);
@@ -138,7 +138,7 @@ function RestTimer({ visible, onDismiss }) {
 
   if (!visible) return null;
 
-  const pct = secs / DEFAULT_REST;
+  const pct = secs / (totalRef.current || duration);
   const color = secs > 30 ? colors.success : secs > 10 ? colors.warning : colors.danger;
 
   return (
@@ -187,12 +187,14 @@ export default function ActiveWorkout() {
   const [finishing, setFinishing] = useState(false);
   const [notes, setNotes] = useState('');
   const [showRest, setShowRest] = useState(false);
+  const [restDuration, setRestDuration] = useState(DEFAULT_REST);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
   const pausedAtRef = useRef(0);
 
   useEffect(() => {
     init();
+    getSetting('rest_duration', String(DEFAULT_REST)).then(v => setRestDuration(parseInt(v) || DEFAULT_REST));
     return () => clearInterval(timerRef.current);
   }, []);
 
@@ -377,7 +379,7 @@ export default function ActiveWorkout() {
         </ScrollView>
 
         {/* Rest timer overlay */}
-        <RestTimer visible={showRest} onDismiss={() => setShowRest(false)} />
+        <RestTimer visible={showRest} duration={restDuration} onDismiss={() => setShowRest(false)} />
 
         {/* Exercise picker modal */}
         <Modal visible={pickingExercise} transparent animationType="slide" onRequestClose={() => setPickingExercise(false)}>

@@ -10,3 +10,5 @@ dist/
 *.orig.*
 web-build/
 .env
+*.apk
+android/

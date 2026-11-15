@@ -178,7 +178,11 @@ export default function HomeScreen() {
           <View style={s.section}>
             <Text style={s.sectionLabel}>RECENT</Text>
             {sessions.slice(0, 4).map(sess => (
-              <View key={sess.id} style={s.recentCard}>
+              <TouchableOpacity
+                key={sess.id}
+                style={s.recentCard}
+                onPress={() => router.push({ pathname: '/edit-session', params: { sessionId: sess.id } })}
+              >
                 <View style={s.recentLeft}>
                   <Text style={s.recentName}>{sess.name}</Text>
                   <Text style={s.recentMeta}>
@@ -186,7 +190,8 @@ export default function HomeScreen() {
                     {sess.finished_at ? ` · ${formatDuration(sess.finished_at - sess.started_at)}` : ''}
                   </Text>
                 </View>
-              </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -279,8 +284,9 @@ const s = StyleSheet.create({
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,
     padding: spacing.md, marginBottom: spacing.sm,
+    flexDirection: 'row', alignItems: 'center',
   },
-  recentLeft: {},
+  recentLeft: { flex: 1 },
   recentName: { fontSize: font.base, fontWeight: '600', color: colors.text },
   recentMeta: { fontSize: font.sm, color: colors.textMuted, marginTop: 2 },
   emptyState: { alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.md },

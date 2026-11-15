@@ -79,12 +79,30 @@ async function initSchema(db) {
       FOREIGN KEY (template_id) REFERENCES workout_templates(id)
     );
 
+    CREATE TABLE IF NOT EXISTS user_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_logged_sets_session ON logged_sets(session_id);
     CREATE INDEX IF NOT EXISTS idx_logged_sets_exercise ON logged_sets(exercise_id);
     CREATE INDEX IF NOT EXISTS idx_logged_sets_created ON logged_sets(created_at);
     CREATE INDEX IF NOT EXISTS idx_sessions_started ON workout_sessions(started_at);
     CREATE INDEX IF NOT EXISTS idx_scheduled_date ON scheduled_workouts(date);
   `);
+}
+
+// ── User Settings ────────────────────────────────────────────────
+
+export async function getSetting(key, defaultValue = null) {
+  const db = await getDb();
+  const row = await db.getFirstAsync('SELECT value FROM user_settings WHERE key = ?', [key]);
+  return row ? row.value : defaultValue;
+}
+
+export async function setSetting(key, value) {
+  const db = await getDb();
+  await db.runAsync('INSERT OR REPLACE INTO user_settings (key, value) VALUES (?, ?)', [key, String(value)]);
 }
 
 // ── Exercises ────────────────────────────────────────────────────
@@ -219,6 +237,20 @@ export async function logSet({ id, sessionId, exerciseId, exerciseName, setNumbe
     [id, sessionId, exerciseId, exerciseName, setNumber, weight, reps]
   );
   syncRecord('logged_sets', { id, session_id: sessionId, exercise_id: exerciseId, exercise_name: exerciseName, set_number: setNumber, weight, reps, completed: 1 });
+}
+
+export async function updateSet(id, weight, reps) {
+  const db = await getDb();
+  await db.runAsync('UPDATE logged_sets SET weight = ?, reps = ? WHERE id = ?', [weight, reps, id]);
+  const row = await db.getFirstAsync('SELECT * FROM logged_sets WHERE id = ?', [id]);
+  if (row) syncRecord('logged_sets', row);
+}
+
+export async function updateSession(id, name, notes) {
+  const db = await getDb();
+  await db.runAsync('UPDATE workout_sessions SET name = ?, notes = ? WHERE id = ?', [name, notes || null, id]);
+  const row = await db.getFirstAsync('SELECT * FROM workout_sessions WHERE id = ?', [id]);
+  if (row) syncRecord('workout_sessions', row);
 }
 
 export async function deleteSet(id) {

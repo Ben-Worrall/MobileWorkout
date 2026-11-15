@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gym Note",
     "slug": "mobileworkout",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "mobileworkout",
@@ -18,12 +18,13 @@
         "backgroundColor": "#080d1a"
       },
       "package": "com.gymnote.app",
-      "versionCode": 1
+      "versionCode": 3
     },
     "plugins": [
       "expo-router",
       "./plugins/withAndroidSettingsFix",
-      "expo-font"
+      "expo-font",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": false

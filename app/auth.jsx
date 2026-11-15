@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { uploadLocalData } from '../utils/sync';
@@ -27,10 +28,13 @@ export default function AuthScreen() {
     try {
       if (tab === 'login') {
         await signIn(e, p);
+        router.back();
       } else {
         await signUp(e, p);
         await uploadLocalData();
-        Alert.alert('Account created!', 'Your local workouts have been synced to your account.');
+        Alert.alert('Account created!', 'Your local workouts have been synced to your account.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
       }
     } catch (err) {
       Alert.alert('Error', err.message);

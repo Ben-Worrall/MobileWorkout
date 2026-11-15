@@ -1,16 +1,36 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Linking, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
+import * as IntentLauncher from 'expo-intent-launcher';
+import Constants from 'expo-constants';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { uploadLocalData } from '../utils/sync';
+import { getSetting, setSetting } from '../utils/database';
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = Constants.expoConfig?.version || '1.0.2';
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/Ben-Worrall/MobileWorkout/releases/latest';
 const WEBSITE_URL = 'https://ben-worrall.github.io/MobileWorkout/';
+
+const REST_OPTIONS = [
+  { label: '30 sec', value: 30 },
+  { label: '1 min', value: 60 },
+  { label: '1:30', value: 90 },
+  { label: '2 min', value: 120 },
+  { label: '3 min', value: 180 },
+  { label: '5 min', value: 300 },
+];
+
+function restLabel(secs) {
+  const opt = REST_OPTIONS.find(o => o.value === secs);
+  if (opt) return opt.label;
+  const m = Math.floor(secs / 60);
+  const sec = secs % 60;
+  return sec === 0 ? `${m} min` : `${m}:${String(sec).padStart(2, '0')}`;
+}
 
 function SettingsRow({ icon, iconColor, label, value, onPress, rightEl }) {
   return (
@@ -33,8 +53,20 @@ export default function Settings() {
   const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [updateInfo, setUpdateInfo] = useState(null); // { version, apkUrl } | null
+  const [updateInfo, setUpdateInfo] = useState(null);
   const [upToDate, setUpToDate] = useState(false);
+  const [restDuration, setRestDuration] = useState(90);
+  const [showRestPicker, setShowRestPicker] = useState(false);
+
+  useEffect(() => {
+    getSetting('rest_duration', '90').then(v => setRestDuration(parseInt(v) || 90));
+  }, []);
+
+  async function handleSetRest(secs) {
+    await setSetting('rest_duration', String(secs));
+    setRestDuration(secs);
+    setShowRestPicker(false);
+  }
 
   async function checkForUpdates() {
     setChecking(true);
@@ -47,21 +79,17 @@ export default function Settings() {
       if (!res.ok) throw new Error('Network error');
       const data = await res.json();
       const tag = (data.tag_name || '').replace(/^v/, '');
-
-      // Find the APK asset in the release
       const apkAsset = (data.assets || []).find(a =>
         a.name.endsWith('.apk') && a.browser_download_url
       );
-
       if (tag === APP_VERSION) {
         setUpToDate(true);
       } else if (apkAsset) {
         setUpdateInfo({ version: tag, apkUrl: apkAsset.browser_download_url });
       } else {
-        // No APK attached yet — open releases page
         setUpdateInfo({ version: tag, apkUrl: null });
       }
-    } catch (e) {
+    } catch {
       Alert.alert('Update check failed', 'Could not reach GitHub. Check your internet connection.');
     } finally {
       setChecking(false);
@@ -79,8 +107,6 @@ export default function Settings() {
 
     try {
       const dest = FileSystem.documentDirectory + 'GymNote-update.apk';
-
-      // Delete old download if exists
       const info = await FileSystem.getInfoAsync(dest);
       if (info.exists) await FileSystem.deleteAsync(dest, { idempotent: true });
 
@@ -98,9 +124,13 @@ export default function Settings() {
       const result = await download.downloadAsync();
       if (!result?.uri) throw new Error('Download failed');
 
-      // Open the APK — Android will prompt "Install this app?"
-      // Uses content:// URI via Linking; Android handles the install intent
-      await Linking.openURL(result.uri);
+      // Android 7+ requires content:// URI for install intents, not file://
+      const contentUri = await FileSystem.getContentUriAsync(result.uri);
+      await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+        data: contentUri,
+        flags: 1,
+        type: 'application/vnd.android.package-archive',
+      });
     } catch (e) {
       Alert.alert('Download failed', 'Could not download the update. Try again or visit the website.', [
         { text: 'Open Website', onPress: () => Linking.openURL(WEBSITE_URL) },
@@ -131,6 +161,18 @@ export default function Settings() {
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content}>
+
+        {/* WORKOUT */}
+        <Text style={s.sectionLabel}>WORKOUT</Text>
+        <View style={s.section}>
+          <SettingsRow
+            icon="timer-outline"
+            label="Rest Timer"
+            value={restLabel(restDuration)}
+            iconColor={colors.accent}
+            onPress={() => setShowRestPicker(true)}
+          />
+        </View>
 
         {/* APP */}
         <Text style={s.sectionLabel}>APP</Text>
@@ -248,6 +290,30 @@ export default function Settings() {
         </View>
 
       </ScrollView>
+
+      {/* Rest timer picker */}
+      <Modal visible={showRestPicker} transparent animationType="slide" onRequestClose={() => setShowRestPicker(false)}>
+        <TouchableOpacity style={s.pickerOverlay} activeOpacity={1} onPress={() => setShowRestPicker(false)}>
+          <View style={s.pickerSheet}>
+            <View style={s.pickerHandle} />
+            <Text style={s.pickerTitle}>Rest Timer Duration</Text>
+            {REST_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                style={s.pickerOption}
+                onPress={() => handleSetRest(opt.value)}
+              >
+                <Text style={[s.pickerOptionText, restDuration === opt.value && s.pickerOptionTextActive]}>
+                  {opt.label}
+                </Text>
+                {restDuration === opt.value && (
+                  <Ionicons name="checkmark" size={18} color={colors.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -282,4 +348,11 @@ const s = StyleSheet.create({
   progressBar: { height: 6, backgroundColor: colors.bg3, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: 6, backgroundColor: colors.success, borderRadius: radius.full },
   progressText: { fontSize: font.sm, color: colors.success, textAlign: 'center' },
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerSheet: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, paddingTop: spacing.sm, paddingBottom: spacing.xxl, paddingHorizontal: spacing.lg },
+  pickerHandle: { width: 36, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.md },
+  pickerTitle: { fontSize: font.md, fontWeight: '700', color: colors.text, marginBottom: spacing.md },
+  pickerOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderDim },
+  pickerOptionText: { fontSize: font.base, color: colors.textDim, fontWeight: '500' },
+  pickerOptionTextActive: { color: colors.accent, fontWeight: '700' },
 });
