@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
 import { colors, spacing, radius, font } from '../constants/theme';
+import { useAuth } from '../context/AuthContext';
+import { uploadLocalData } from '../utils/sync';
 
 const APP_VERSION = '1.0.0';
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/Ben-Worrall/MobileWorkout/releases/latest';
@@ -27,6 +29,7 @@ function SettingsRow({ icon, iconColor, label, value, onPress, rightEl }) {
 }
 
 export default function Settings() {
+  const { user, signOut } = useAuth();
   const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -176,15 +179,52 @@ export default function Settings() {
           </View>
         )}
 
-        {/* DATA */}
-        <Text style={s.sectionLabel}>DATA</Text>
+        {/* ACCOUNT */}
+        <Text style={s.sectionLabel}>ACCOUNT</Text>
         <View style={s.section}>
-          <SettingsRow
-            icon="cloud-upload-outline"
-            label="Cloud Sync"
-            value="Coming soon"
-            iconColor={colors.textMuted}
-          />
+          {user ? (
+            <>
+              <SettingsRow
+                icon="person-circle-outline"
+                label="Signed in as"
+                value={user.email}
+                iconColor={colors.accent}
+              />
+              <View style={s.separator} />
+              <SettingsRow
+                icon="cloud-upload-outline"
+                label="Sync local data"
+                iconColor={colors.success}
+                onPress={async () => {
+                  try {
+                    await uploadLocalData();
+                    Alert.alert('Synced', 'Your workouts have been uploaded to your account.');
+                  } catch (e) {
+                    Alert.alert('Sync failed', e.message);
+                  }
+                }}
+              />
+              <View style={s.separator} />
+              <SettingsRow
+                icon="log-out-outline"
+                label="Sign Out"
+                iconColor={colors.danger}
+                onPress={() =>
+                  Alert.alert('Sign Out', 'Your data stays on this device.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+                  ])
+                }
+              />
+            </>
+          ) : (
+            <SettingsRow
+              icon="log-in-outline"
+              label="Sign In / Create Account"
+              iconColor={colors.accent}
+              onPress={() => router.push('/auth')}
+            />
+          )}
         </View>
 
         {/* ABOUT */}

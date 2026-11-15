@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { syncRecord, syncDelete } from './sync';
 
 let db = null;
 
@@ -104,11 +105,13 @@ export async function addCustomExercise({ id, name, muscle, category, equipment,
     'INSERT INTO exercises (id, name, muscle, category, equipment, is_custom, notes) VALUES (?, ?, ?, ?, ?, 1, ?)',
     [id, name, muscle, category, equipment || 'Bodyweight', notes || null]
   );
+  syncRecord('exercises', { id, name, muscle, category, equipment: equipment || 'Bodyweight', is_custom: 1, notes: notes || null });
 }
 
 export async function deleteCustomExercise(id) {
   const db = await getDb();
   await db.runAsync('DELETE FROM exercises WHERE id = ? AND is_custom = 1', [id]);
+  syncDelete('exercises', id);
 }
 
 // ── Templates ────────────────────────────────────────────────────
@@ -148,19 +151,23 @@ export async function saveTemplate({ id, name, description, color, exercises }) 
     'INSERT OR REPLACE INTO workout_templates (id, name, description, color) VALUES (?, ?, ?, ?)',
     [id, name, description || null, color || '#4d9fff']
   );
+  syncRecord('workout_templates', { id, name, description: description || null, color: color || '#4d9fff' });
   await db.runAsync('DELETE FROM template_exercises WHERE template_id = ?', [id]);
   for (let i = 0; i < exercises.length; i++) {
     const ex = exercises[i];
+    const teId = uid();
     await db.runAsync(
       'INSERT INTO template_exercises (id, template_id, exercise_id, default_sets, default_reps, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
-      [uid(), id, ex.exercise_id || ex.id, ex.default_sets || 3, ex.default_reps || 10, i]
+      [teId, id, ex.exercise_id || ex.id, ex.default_sets || 3, ex.default_reps || 10, i]
     );
+    syncRecord('template_exercises', { id: teId, template_id: id, exercise_id: ex.exercise_id || ex.id, default_sets: ex.default_sets || 3, default_reps: ex.default_reps || 10, sort_order: i });
   }
 }
 
 export async function deleteTemplate(id) {
   const db = await getDb();
   await db.runAsync('DELETE FROM workout_templates WHERE id = ?', [id]);
+  syncDelete('workout_templates', id);
 }
 
 // ── Sessions ─────────────────────────────────────────────────────
@@ -186,18 +193,23 @@ export async function getSession(id) {
 
 export async function createSession({ id, name, templateId }) {
   const db = await getDb();
+  const startedAt = Date.now();
   await db.runAsync(
     'INSERT INTO workout_sessions (id, name, template_id, started_at) VALUES (?, ?, ?, ?)',
-    [id, name, templateId || null, Date.now()]
+    [id, name, templateId || null, startedAt]
   );
+  syncRecord('workout_sessions', { id, name, template_id: templateId || null, started_at: startedAt });
 }
 
 export async function finishSession(id, notes) {
   const db = await getDb();
+  const finishedAt = Date.now();
   await db.runAsync(
     'UPDATE workout_sessions SET finished_at = ?, notes = ? WHERE id = ?',
-    [Date.now(), notes || null, id]
+    [finishedAt, notes || null, id]
   );
+  const session = await db.getFirstAsync('SELECT * FROM workout_sessions WHERE id = ?', [id]);
+  if (session) syncRecord('workout_sessions', session);
 }
 
 export async function logSet({ id, sessionId, exerciseId, exerciseName, setNumber, weight, reps }) {
@@ -206,16 +218,19 @@ export async function logSet({ id, sessionId, exerciseId, exerciseName, setNumbe
     'INSERT OR REPLACE INTO logged_sets (id, session_id, exercise_id, exercise_name, set_number, weight, reps, completed) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
     [id, sessionId, exerciseId, exerciseName, setNumber, weight, reps]
   );
+  syncRecord('logged_sets', { id, session_id: sessionId, exercise_id: exerciseId, exercise_name: exerciseName, set_number: setNumber, weight, reps, completed: 1 });
 }
 
 export async function deleteSet(id) {
   const db = await getDb();
   await db.runAsync('DELETE FROM logged_sets WHERE id = ?', [id]);
+  syncDelete('logged_sets', id);
 }
 
 export async function deleteSession(id) {
   const db = await getDb();
   await db.runAsync('DELETE FROM workout_sessions WHERE id = ?', [id]);
+  syncDelete('workout_sessions', id);
 }
 
 // ── Schedule ─────────────────────────────────────────────────────
@@ -234,6 +249,7 @@ export async function scheduleWorkout({ id, templateId, date, notes }) {
     'INSERT INTO scheduled_workouts (id, template_id, date, notes) VALUES (?, ?, ?, ?)',
     [id, templateId || null, date, notes || null]
   );
+  syncRecord('scheduled_workouts', { id, template_id: templateId || null, date, notes: notes || null, completed: 0 });
 }
 
 export async function markScheduledComplete(id, sessionId) {
@@ -247,6 +263,7 @@ export async function markScheduledComplete(id, sessionId) {
 export async function deleteScheduled(id) {
   const db = await getDb();
   await db.runAsync('DELETE FROM scheduled_workouts WHERE id = ?', [id]);
+  syncDelete('scheduled_workouts', id);
 }
 
 // ── Analytics ────────────────────────────────────────────────────
