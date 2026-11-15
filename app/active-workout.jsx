@@ -1,22 +1,30 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  TextInput, Modal, Alert, FlatList, KeyboardAvoidingView, Platform,
+  TextInput, Modal, Alert, FlatList, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
+import { BUILTIN_EXERCISES } from '../constants/exercises';
 import {
-  getTemplate, getAllExercises, createSession,
+  getTemplate, getAllExercises, createSession, seedExercises,
   logSet, deleteSet, finishSession, markScheduledComplete, uid,
 } from '../utils/database';
+
+const DEFAULT_REST = 90; // seconds
 
 function formatTime(ms) {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
   if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function formatSecs(s) {
+  const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
@@ -100,6 +108,68 @@ function ExerciseBlock({ exercise, sets, onAddSet, onDeleteSet, lastSet }) {
   );
 }
 
+// ── Rest Timer Overlay ───────────────────────────────────────────────────────
+
+function RestTimer({ visible, onDismiss }) {
+  const [secs, setSecs] = useState(DEFAULT_REST);
+  const [running, setRunning] = useState(true);
+  const intervalRef = useRef(null);
+  const progress = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    setSecs(DEFAULT_REST);
+    setRunning(true);
+    Animated.timing(progress, { toValue: 0, duration: DEFAULT_REST * 1000, useNativeDriver: false }).start();
+    return () => clearInterval(intervalRef.current);
+  }, [visible]);
+
+  useEffect(() => {
+    clearInterval(intervalRef.current);
+    if (!running || !visible) return;
+    intervalRef.current = setInterval(() => {
+      setSecs(prev => {
+        if (prev <= 1) { clearInterval(intervalRef.current); onDismiss(); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(intervalRef.current);
+  }, [running, visible]);
+
+  if (!visible) return null;
+
+  const pct = secs / DEFAULT_REST;
+  const color = secs > 30 ? colors.success : secs > 10 ? colors.warning : colors.danger;
+
+  return (
+    <View style={s.restOverlay}>
+      <View style={s.restCard}>
+        <Text style={s.restLabel}>REST</Text>
+        <Text style={[s.restTime, { color }]}>{formatSecs(secs)}</Text>
+        <View style={s.restBarBg}>
+          <View style={[s.restBarFill, { width: `${pct * 100}%`, backgroundColor: color }]} />
+        </View>
+        <View style={s.restBtns}>
+          <TouchableOpacity style={s.restAdjBtn} onPress={() => setSecs(s => Math.max(0, s - 15))}>
+            <Text style={s.restAdjText}>−15s</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.restToggleBtn} onPress={() => setRunning(r => !r)}>
+            <Ionicons name={running ? 'pause' : 'play'} size={18} color={colors.white} />
+          </TouchableOpacity>
+          <TouchableOpacity style={s.restAdjBtn} onPress={() => setSecs(s => s + 15)}>
+            <Text style={s.restAdjText}>+15s</Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={s.restSkip} onPress={onDismiss}>
+          <Text style={s.restSkipText}>Skip</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function ActiveWorkout() {
   const { templateId, scheduledId } = useLocalSearchParams();
 
@@ -109,14 +179,17 @@ export default function ActiveWorkout() {
   const [loggedSets, setLoggedSets] = useState({});
   const [lastSets, setLastSets] = useState({});
   const [elapsed, setElapsed] = useState(0);
+  const [timerRunning, setTimerRunning] = useState(false);
   const [pickingExercise, setPickingExercise] = useState(false);
   const [allExercises, setAllExercises] = useState([]);
   const [exSearch, setExSearch] = useState('');
   const [exMuscleFilter, setExMuscleFilter] = useState('All');
   const [finishing, setFinishing] = useState(false);
   const [notes, setNotes] = useState('');
+  const [showRest, setShowRest] = useState(false);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
+  const pausedAtRef = useRef(0);
 
   useEffect(() => {
     init();
@@ -141,17 +214,30 @@ export default function ActiveWorkout() {
     setSessionName(name);
     setExercises(exList);
     await createSession({ id: sessionId, name, templateId: templateId || null });
-    startTimeRef.current = Date.now();
+  }
+
+  function handleStartTimer() {
+    if (timerRunning) return;
+    setTimerRunning(true);
+    startTimeRef.current = Date.now() - pausedAtRef.current;
     timerRef.current = setInterval(() => setElapsed(Date.now() - startTimeRef.current), 1000);
   }
 
+  function handlePauseTimer() {
+    clearInterval(timerRef.current);
+    pausedAtRef.current = elapsed;
+    setTimerRunning(false);
+  }
+
   async function handleAddSet(exercise, weight, reps) {
+    if (!timerRunning) handleStartTimer();
     const setId = uid();
     const exId = exercise.exercise_id || exercise.id;
     const setNum = (loggedSets[exId]?.length || 0) + 1;
     await logSet({ id: setId, sessionId, exerciseId: exId, exerciseName: exercise.exercise_name || exercise.name, setNumber: setNum, weight, reps });
     setLoggedSets(prev => ({ ...prev, [exId]: [...(prev[exId] || []), { id: setId, set_number: setNum, weight, reps }] }));
     setLastSets(prev => ({ ...prev, [exId]: { weight, reps } }));
+    setShowRest(true);
   }
 
   async function handleDeleteSet(setId) {
@@ -164,6 +250,7 @@ export default function ActiveWorkout() {
   }
 
   async function openExercisePicker() {
+    await seedExercises(BUILTIN_EXERCISES);
     const exs = await getAllExercises();
     setAllExercises(exs);
     setPickingExercise(true);
@@ -223,7 +310,16 @@ export default function ActiveWorkout() {
           </TouchableOpacity>
           <View style={s.headerCenter}>
             <Text style={s.headerTitle}>{sessionName}</Text>
-            <Text style={s.timer}>{formatTime(elapsed)}</Text>
+            <TouchableOpacity onPress={timerRunning ? handlePauseTimer : handleStartTimer} style={s.timerRow}>
+              <Ionicons
+                name={timerRunning ? 'pause-circle' : 'play-circle'}
+                size={16}
+                color={timerRunning ? colors.accent : colors.textMuted}
+              />
+              <Text style={[s.timer, { color: timerRunning ? colors.accent : colors.textMuted }]}>
+                {formatTime(elapsed)}
+              </Text>
+            </TouchableOpacity>
           </View>
           <TouchableOpacity onPress={handleFinish} style={[s.headerSide, { alignItems: 'flex-end' }]}>
             <Text style={s.finishText}>Finish</Text>
@@ -279,6 +375,9 @@ export default function ActiveWorkout() {
             <Text style={s.addExText}>Add Exercise</Text>
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Rest timer overlay */}
+        <RestTimer visible={showRest} onDismiss={() => setShowRest(false)} />
 
         {/* Exercise picker modal */}
         <Modal visible={pickingExercise} transparent animationType="slide" onRequestClose={() => setPickingExercise(false)}>
@@ -388,7 +487,8 @@ const s = StyleSheet.create({
   headerSide: { width: 60 },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: font.base, fontWeight: '700', color: colors.text },
-  timer: { fontSize: font.sm, color: colors.accent, fontWeight: '600' },
+  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  timer: { fontSize: font.sm, fontWeight: '600' },
   finishText: { color: colors.accent, fontWeight: '700', fontSize: font.base },
   statsBar: { flexDirection: 'row', backgroundColor: colors.bg2, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },
   statItem: { flex: 1, alignItems: 'center', gap: 2 },
@@ -445,4 +545,17 @@ const s = StyleSheet.create({
   saveBtnText: { color: colors.white, fontWeight: '700', fontSize: font.base },
   cancelBtn: { alignItems: 'center', padding: spacing.md, marginTop: spacing.xs },
   cancelBtnText: { color: colors.textDim, fontSize: font.base },
+  // Rest timer
+  restOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: spacing.md, paddingBottom: spacing.lg },
+  restCard: { backgroundColor: colors.bg2, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
+  restLabel: { fontSize: font.xs, fontWeight: '700', color: colors.textMuted, letterSpacing: 1.5 },
+  restTime: { fontSize: font.xxxl, fontWeight: '800' },
+  restBarBg: { width: '100%', height: 4, backgroundColor: colors.bg3, borderRadius: 2, overflow: 'hidden' },
+  restBarFill: { height: '100%', borderRadius: 2 },
+  restBtns: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginTop: spacing.xs },
+  restAdjBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  restAdjText: { fontSize: font.base, fontWeight: '600', color: colors.textDim },
+  restToggleBtn: { backgroundColor: colors.accent, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  restSkip: { paddingVertical: spacing.xs },
+  restSkipText: { fontSize: font.sm, color: colors.textMuted },
 });

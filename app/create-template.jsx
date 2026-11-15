@@ -7,7 +7,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
-import { getAllExercises, getTemplate, saveTemplate, uid } from '../utils/database';
+import { getAllExercises, getTemplate, saveTemplate, seedExercises, uid } from '../utils/database';
+import { BUILTIN_EXERCISES } from '../constants/exercises';
 
 const TEMPLATE_COLORS = ['#4d9fff', '#f87171', '#34d399', '#a78bfa', '#fbbf24', '#fb923c', '#38bdf8', '#f472b6'];
 
@@ -45,6 +46,7 @@ export default function CreateTemplate() {
   }
 
   async function openPicker() {
+    await seedExercises(BUILTIN_EXERCISES);
     const exs = await getAllExercises();
     setAllExercises(exs);
     setPickingExercise(true);
