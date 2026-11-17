@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { uploadLocalData } from '../utils/sync';
 import { getSetting, setSetting } from '../utils/database';
 
-const APP_VERSION = Constants.expoConfig?.version || '1.0.2';
+const APP_VERSION = Constants.nativeAppVersion || Constants.expoConfig?.version || '1.0.3';
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/Ben-Worrall/MobileWorkout/releases/latest';
 const WEBSITE_URL = 'https://ben-worrall.github.io/MobileWorkout/';
 
