@@ -188,7 +188,7 @@ export default function LibraryScreen() {
             renderItem={({ item }) => (
               <ExerciseCard
                 ex={item}
-                onPress={ex => router.push({ pathname: '/exercise-detail', params: { exerciseId: ex.id, name: ex.name } })}
+                onPress={ex => router.push({ pathname: '/exercise-detail', params: { exerciseId: ex.id, name: ex.name, muscle: ex.muscle } })}
                 onDelete={handleDeleteExercise}
               />
             )}

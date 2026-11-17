@@ -411,14 +411,25 @@ export async function getRecentSetsForExercise(exerciseId, limit = 10) {
 
 export async function seedExercises(builtinExercises) {
   const db = await getDb();
-  const existing = await db.getFirstAsync('SELECT COUNT(*) as count FROM exercises WHERE is_custom = 0');
-  if (existing.count > 0) return;
   for (const ex of builtinExercises) {
     await db.runAsync(
-      'INSERT OR IGNORE INTO exercises (id, name, muscle, category, equipment, is_custom) VALUES (?, ?, ?, ?, ?, 0)',
-      [ex.id, ex.name, ex.muscle, ex.category, ex.equipment]
+      `INSERT INTO exercises (id, name, muscle, category, equipment, is_custom, notes)
+       VALUES (?, ?, ?, ?, ?, 0, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         muscle = excluded.muscle,
+         category = excluded.category,
+         equipment = excluded.equipment,
+         notes = excluded.notes
+       WHERE exercises.is_custom = 0`,
+      [ex.id, ex.name, ex.muscle, ex.category, ex.equipment, ex.notes || null]
     );
   }
+}
+
+export async function getExercise(id) {
+  const db = await getDb();
+  return db.getFirstAsync('SELECT * FROM exercises WHERE id = ?', [id]);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────

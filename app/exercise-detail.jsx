@@ -4,7 +4,7 @@ import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
-import { getVolumeOverTime, getRecentSetsForExercise, getPersonalRecords } from '../utils/database';
+import { getVolumeOverTime, getRecentSetsForExercise, getPersonalRecords, getExercise } from '../utils/database';
 
 const PERIODS = [
   { label: '1M', days: 30 },
@@ -57,7 +57,8 @@ export default function ExerciseDetail() {
   const [volumeData, setVolumeData] = useState([]);
   const [recentSets, setRecentSets] = useState([]);
   const [pr, setPr] = useState(null);
-  const [chartMode, setChartMode] = useState('volume'); // volume | weight
+  const [chartMode, setChartMode] = useState('volume');
+  const [exerciseData, setExerciseData] = useState(null);
 
   const mc = muscleColor(muscle);
 
@@ -68,13 +69,15 @@ export default function ExerciseDetail() {
   );
 
   async function load() {
-    const [vol, sets, records] = await Promise.all([
+    const [vol, sets, records, ex] = await Promise.all([
       getVolumeOverTime(exerciseId, period.days),
       getRecentSetsForExercise(exerciseId, 30),
       getPersonalRecords(),
+      getExercise(exerciseId),
     ]);
     setVolumeData(vol);
     setRecentSets(sets);
+    setExerciseData(ex);
     const myPr = records.find(r => r.exercise_id === exerciseId);
     setPr(myPr || null);
   }
@@ -121,6 +124,13 @@ export default function ExerciseDetail() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Description */}
+        {exerciseData?.notes ? (
+          <View style={s.descCard}>
+            <Text style={s.descText}>{exerciseData.notes}</Text>
+          </View>
+        ) : null}
 
         {/* Summary stats */}
         <View style={s.statsRow}>
@@ -213,6 +223,8 @@ const s = StyleSheet.create({
   periodBtnActive: { backgroundColor: colors.accent },
   periodText: { fontSize: font.sm, fontWeight: '600', color: colors.textDim },
   periodTextActive: { color: colors.white },
+  descCard: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
+  descText: { fontSize: font.sm, color: colors.textDim, lineHeight: 20 },
   statsRow: { flexDirection: 'row', gap: spacing.sm },
   statCard: { flex: 1, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, alignItems: 'center', gap: 2 },
   statNum: { fontSize: font.xl, fontWeight: '700', color: colors.text },
