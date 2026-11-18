@@ -165,8 +165,12 @@ export default function HomeScreen() {
                 <View key={m.muscle} style={s.volumeCard}>
                   <View style={[s.muscleDot, { backgroundColor: muscleColor(m.muscle) }]} />
                   <Text style={s.muscleName}>{m.muscle}</Text>
-                  <Text style={s.muscleVol}>{Math.round((m.total_volume || 0) / 1000)}k kg</Text>
-                  <Text style={s.muscleSets}>{m.total_sets} sets</Text>
+                  <Text style={s.muscleVol}>
+                    {(m.total_volume || 0) >= 1000
+                      ? `${Math.round((m.total_volume / 1000) * 10) / 10}k kg`
+                      : `${Math.round(m.total_volume || 0)} kg`}
+                  </Text>
+                  <Text style={s.muscleSets}>{m.total_sets} {m.total_sets === 1 ? 'set' : 'sets'}</Text>
                 </View>
               ))}
             </View>

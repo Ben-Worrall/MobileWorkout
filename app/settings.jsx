@@ -5,13 +5,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
-import Constants from 'expo-constants';
+import { APP_VERSION } from '../constants/version';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { uploadLocalData } from '../utils/sync';
 import { getSetting, setSetting } from '../utils/database';
 
-const APP_VERSION = Constants.nativeAppVersion || Constants.expoConfig?.version || '1.0.3';
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/Ben-Worrall/MobileWorkout/releases/latest';
 const WEBSITE_URL = 'https://ben-worrall.github.io/MobileWorkout/';
 
@@ -82,7 +81,8 @@ export default function Settings() {
       const apkAsset = (data.assets || []).find(a =>
         a.name.endsWith('.apk') && a.browser_download_url
       );
-      if (tag === APP_VERSION) {
+      const newer = tag.split('.').map(Number).reduce((r, n, i) => r || Math.sign(n - (Number(APP_VERSION.split('.')[i]) || 0)), 0) > 0;
+      if (!newer) {
         setUpToDate(true);
       } else if (apkAsset) {
         setUpdateInfo({ version: tag, apkUrl: apkAsset.browser_download_url });

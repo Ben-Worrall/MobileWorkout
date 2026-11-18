@@ -416,7 +416,7 @@ export default function ActiveWorkout() {
         {/* Exercise picker modal */}
         <Modal visible={pickingExercise} transparent animationType="slide" onRequestClose={() => setPickingExercise(false)}>
           <View style={s.overlay}>
-            <View style={s.modal}>
+            <View style={[s.modal, s.pickerModal]}>
               <View style={s.modalHeader}>
                 <Text style={s.modalTitle}>Add Exercise</Text>
                 <TouchableOpacity onPress={() => setPickingExercise(false)}>
@@ -433,7 +433,7 @@ export default function ActiveWorkout() {
                   onChangeText={setExSearch}
                 />
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, flexDirection: 'row', paddingVertical: spacing.sm, paddingHorizontal: spacing.xs }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: spacing.sm, flexDirection: 'row', paddingVertical: spacing.sm, paddingHorizontal: spacing.xs }}>
                 {['All', 'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Glutes', 'Core', 'Cardio', 'Calves'].map(m => (
                   <TouchableOpacity
                     key={m}
@@ -562,7 +562,8 @@ const s = StyleSheet.create({
   emptyTitle: { fontSize: font.xl, fontWeight: '700', color: colors.textDim },
   emptySub: { fontSize: font.base, color: colors.textMuted, textAlign: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, height: '80%', padding: spacing.lg },
+  modal: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: '80%', padding: spacing.lg },
+  pickerModal: { height: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   modalTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text },
   modalSearch: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bg3, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, height: 40, marginBottom: spacing.xs },
