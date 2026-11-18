@@ -28,80 +28,103 @@ function formatSecs(s) {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function SetRow({ set, onDelete }) {
-  return (
-    <View style={s.setRow}>
-      <View style={s.setNumBadge}>
-        <Text style={s.setNumText}>{set.set_number}</Text>
-      </View>
-      <View style={s.setValues}>
-        <Text style={s.setValue}>{set.weight > 0 ? `${set.weight} kg` : 'BW'}</Text>
-        <Text style={s.setX}>×</Text>
-        <Text style={s.setValue}>{set.reps}</Text>
-        <Text style={s.setUnit}>reps</Text>
-      </View>
-      <TouchableOpacity onPress={() => onDelete(set.id)} style={s.setDel}>
-        <Ionicons name="close" size={16} color={colors.textMuted} />
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function ExerciseBlock({ exercise, sets, onAddSet, onDeleteSet, lastSet }) {
-  const [weight, setWeight] = useState(lastSet?.weight?.toString() || '');
-  const [reps, setReps] = useState(lastSet?.reps?.toString() || '10');
+function ExerciseBlock({ exercise, sets, onTickSet, onUntickSet, onChangeTarget, lastSet }) {
+  const [drafts, setDrafts] = useState({});
   const mc = muscleColor(exercise.muscle);
+  const target = exercise.target_sets || 3;
+  const defaultReps = String(exercise.default_reps || 10);
+  const loggedCount = sets.length;
+  const allDone = target > 0 && Array.from({ length: target }, (_, i) => i + 1).every(n => sets.some(x => x.set_number === n));
 
-  function handleAdd() {
-    const w = parseFloat(weight) || 0;
-    const r = parseInt(reps) || 0;
+  function draftValue(n, key) {
+    const d = drafts[n]?.[key];
+    if (d !== undefined) return d;
+    if (key === 'weight') return lastSet?.weight ? String(lastSet.weight) : '';
+    return lastSet?.reps ? String(lastSet.reps) : defaultReps;
+  }
+
+  function setDraft(n, key, val) {
+    setDrafts(prev => ({ ...prev, [n]: { ...prev[n], [key]: val } }));
+  }
+
+  function tick(n) {
+    const w = parseFloat(draftValue(n, 'weight')) || 0;
+    const r = parseInt(draftValue(n, 'reps')) || 0;
     if (!r) { Alert.alert('Enter reps'); return; }
-    onAddSet(exercise, w, r);
+    onTickSet(exercise, n, w, r);
   }
 
   return (
-    <View style={[s.exBlock, { borderTopColor: mc }]}>
+    <View style={[s.exBlock, { borderTopColor: mc }, allDone && { opacity: 0.55 }]}>
       <View style={s.exBlockHeader}>
         <View style={{ flex: 1 }}>
-          <Text style={s.exBlockName}>{exercise.exercise_name || exercise.name}</Text>
-          <Text style={s.exBlockMuscle}>{exercise.muscle}</Text>
+          <Text style={[s.exBlockName, allDone && s.struck]}>{exercise.exercise_name || exercise.name}</Text>
+          <Text style={s.exBlockMuscle}>{exercise.muscle} · {Math.min(loggedCount, target)}/{target} sets</Text>
         </View>
-        <View style={[s.muscleDot, { backgroundColor: mc }]} />
+        {allDone
+          ? <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+          : <View style={[s.muscleDot, { backgroundColor: mc }]} />}
       </View>
 
-      {sets.map(set => (
-        <SetRow key={set.id} set={set} onDelete={onDeleteSet} />
-      ))}
+      {Array.from({ length: target }, (_, i) => i + 1).map(n => {
+        const done = sets.find(x => x.set_number === n);
+        return (
+          <View key={n} style={[s.setRow, done && { backgroundColor: colors.success + '12' }]}>
+            <View style={s.setNumBadge}>
+              <Text style={s.setNumText}>{n}</Text>
+            </View>
+            {done ? (
+              <View style={s.setValues}>
+                <Text style={[s.setValue, s.struck]}>{done.weight > 0 ? `${done.weight} kg` : 'BW'}</Text>
+                <Text style={s.setX}>×</Text>
+                <Text style={[s.setValue, s.struck]}>{done.reps}</Text>
+                <Text style={s.setUnit}>reps</Text>
+              </View>
+            ) : (
+              <View style={s.setValues}>
+                <TextInput
+                  style={s.inlineInput}
+                  keyboardType="decimal-pad"
+                  value={draftValue(n, 'weight')}
+                  onChangeText={v => setDraft(n, 'weight', v)}
+                  placeholder="kg"
+                  placeholderTextColor={colors.textMuted}
+                  selectTextOnFocus
+                />
+                <Text style={s.setX}>×</Text>
+                <TextInput
+                  style={s.inlineInput}
+                  keyboardType="number-pad"
+                  value={draftValue(n, 'reps')}
+                  onChangeText={v => setDraft(n, 'reps', v)}
+                  placeholder="reps"
+                  placeholderTextColor={colors.textMuted}
+                  selectTextOnFocus
+                />
+              </View>
+            )}
+            <TouchableOpacity
+              style={[s.tickBtn, done && { backgroundColor: colors.success, borderColor: colors.success }]}
+              onPress={() => (done ? onUntickSet(done.id) : tick(n))}
+            >
+              <Ionicons name="checkmark" size={18} color={done ? colors.white : colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        );
+      })}
 
-      <View style={s.addSetRow}>
-        <View style={s.inputGroup}>
-          <Text style={s.inputLabel}>kg</Text>
-          <TextInput
-            style={s.numInput}
-            keyboardType="decimal-pad"
-            value={weight}
-            onChangeText={setWeight}
-            placeholder="0"
-            placeholderTextColor={colors.textMuted}
-            selectTextOnFocus
-          />
-        </View>
-        <Text style={s.inputSep}>×</Text>
-        <View style={s.inputGroup}>
-          <Text style={s.inputLabel}>reps</Text>
-          <TextInput
-            style={s.numInput}
-            keyboardType="number-pad"
-            value={reps}
-            onChangeText={setReps}
-            placeholder="10"
-            placeholderTextColor={colors.textMuted}
-            selectTextOnFocus
-          />
-        </View>
-        <TouchableOpacity style={s.logSetBtn} onPress={handleAdd}>
-          <Ionicons name="checkmark" size={18} color={colors.white} />
-          <Text style={s.logSetText}>Log</Text>
+      <View style={s.targetRow}>
+        <TouchableOpacity
+          onPress={() => onChangeTarget(exercise, -1)}
+          disabled={target <= 1 || sets.some(x => x.set_number === target)}
+          style={[s.targetBtn, (target <= 1 || sets.some(x => x.set_number === target)) && { opacity: 0.3 }]}
+        >
+          <Ionicons name="remove" size={16} color={colors.textDim} />
+          <Text style={s.targetText}>Remove set</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => onChangeTarget(exercise, 1)} style={s.targetBtn}>
+          <Ionicons name="add" size={16} color={colors.accent} />
+          <Text style={[s.targetText, { color: colors.accent }]}>Add set</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -210,6 +233,8 @@ export default function ActiveWorkout() {
           exercise_name: te.exercise_name,
           muscle: te.muscle,
           equipment: te.equipment,
+          target_sets: te.default_sets || 3,
+          default_reps: te.default_reps || 10,
         }));
       }
     }
@@ -231,11 +256,17 @@ export default function ActiveWorkout() {
     setTimerRunning(false);
   }
 
-  async function handleAddSet(exercise, weight, reps) {
+  function handleChangeTarget(exercise, delta) {
+    const exId = exercise.exercise_id || exercise.id;
+    setExercises(prev => prev.map(e => (e.exercise_id || e.id) === exId
+      ? { ...e, target_sets: Math.max(1, (e.target_sets || 3) + delta) }
+      : e));
+  }
+
+  async function handleAddSet(exercise, setNum, weight, reps) {
     if (!timerRunning) handleStartTimer();
     const setId = uid();
     const exId = exercise.exercise_id || exercise.id;
-    const setNum = (loggedSets[exId]?.length || 0) + 1;
     await logSet({ id: setId, sessionId, exerciseId: exId, exerciseName: exercise.exercise_name || exercise.name, setNumber: setNum, weight, reps });
     setLoggedSets(prev => ({ ...prev, [exId]: [...(prev[exId] || []), { id: setId, set_number: setNum, weight, reps }] }));
     setLastSets(prev => ({ ...prev, [exId]: { weight, reps } }));
@@ -261,7 +292,7 @@ export default function ActiveWorkout() {
   function handleAddExercise(ex) {
     const alreadyAdded = exercises.some(e => (e.exercise_id || e.id) === ex.id);
     if (!alreadyAdded) {
-      setExercises(prev => [...prev, { exercise_id: ex.id, exercise_name: ex.name, muscle: ex.muscle, equipment: ex.equipment }]);
+      setExercises(prev => [...prev, { exercise_id: ex.id, exercise_name: ex.name, muscle: ex.muscle, equipment: ex.equipment, target_sets: 3, default_reps: 10 }]);
     }
     setPickingExercise(false);
     setExSearch('');
@@ -366,8 +397,9 @@ export default function ActiveWorkout() {
               key={ex.exercise_id || ex.id}
               exercise={ex}
               sets={loggedSets[ex.exercise_id || ex.id] || []}
-              onAddSet={handleAddSet}
-              onDeleteSet={handleDeleteSet}
+              onTickSet={handleAddSet}
+              onUntickSet={handleDeleteSet}
+              onChangeTarget={handleChangeTarget}
               lastSet={lastSets[ex.exercise_id || ex.id]}
             />
           ))}
@@ -399,7 +431,6 @@ export default function ActiveWorkout() {
                   placeholderTextColor={colors.textMuted}
                   value={exSearch}
                   onChangeText={setExSearch}
-                  autoFocus
                 />
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, flexDirection: 'row', paddingVertical: spacing.sm, paddingHorizontal: spacing.xs }}>
@@ -512,7 +543,12 @@ const s = StyleSheet.create({
   setValue: { fontSize: font.base, fontWeight: '600', color: colors.text },
   setX: { fontSize: font.sm, color: colors.textMuted },
   setUnit: { fontSize: font.sm, color: colors.textMuted },
-  setDel: { padding: spacing.xs },
+  struck: { textDecorationLine: 'line-through', color: colors.textMuted },
+  inlineInput: { width: 64, backgroundColor: colors.bg3, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, color: colors.text, fontSize: font.base, fontWeight: '700', textAlign: 'center', paddingVertical: 6 },
+  tickBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  targetRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  targetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
+  targetText: { fontSize: font.sm, fontWeight: '600', color: colors.textDim },
   addSetRow: { flexDirection: 'row', alignItems: 'flex-end', padding: spacing.md, gap: spacing.sm },
   inputGroup: { flex: 1, gap: 4 },
   inputLabel: { fontSize: font.xs, color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
@@ -526,7 +562,7 @@ const s = StyleSheet.create({
   emptyTitle: { fontSize: font.xl, fontWeight: '700', color: colors.textDim },
   emptySub: { fontSize: font.base, color: colors.textMuted, textAlign: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: '80%', padding: spacing.lg },
+  modal: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, height: '80%', padding: spacing.lg },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   modalTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text },
   modalSearch: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bg3, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, height: 40, marginBottom: spacing.xs },
