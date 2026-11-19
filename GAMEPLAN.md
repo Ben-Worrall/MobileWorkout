@@ -198,7 +198,7 @@ Test pass log  (append: date, pass #, result, failures found)
 ## Security audit (2026-11-19, requested by user) - DONE, follow-ups below
 Findings and what was done:
 - Repo `Ben-Worrall/MobileWorkout` is PUBLIC. Git history scanned for sb_secret_, sbp_, ghp_, github_pat_, service_role, keystore password, private keys:
-  only hit = `scripts/migrate-supabase.js` containing a 15-character PREFIX of the Supabase secret key (`sb_secret_5NHJF`, not usable). File removed;
+  only hit = `scripts/migrate-supabase.js` containing a 15-character PREFIX of the Supabase secret key (redacted here; not usable on its own). File removed;
   clean schema now in `supabase/schema.sql`. History not rewritten (fragment is harmless and rotating the key makes it moot).
 - Keystore (`gymnote.keystore`) is gitignored (`*.keystore`), not tracked, not shipped. `android/` is gitignored. No `.env` tracked.
 - Published APK (v1.1.0) scanned: contains only the project URL and the PUBLISHABLE key (public by design). `sb_secret_` text is supabase-js library
