@@ -3,6 +3,7 @@ import { supabase } from '../utils/supabase';
 import { getSetting, setSetting } from '../utils/database';
 
 const AuthContext = createContext(null);
+const CONFIRM_REDIRECT = 'https://ben-worrall.github.io/MobileWorkout/confirmed.html';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -32,7 +33,11 @@ export function AuthProvider({ children }) {
   }
 
   async function signUp(email, password) {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: CONFIRM_REDIRECT },
+    });
     if (error) throw error;
     return data;
   }
