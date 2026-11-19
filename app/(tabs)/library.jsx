@@ -12,6 +12,7 @@ import {
   getTemplates, deleteTemplate, uid,
 } from '../../utils/database';
 import { MUSCLES, CATEGORIES, EQUIPMENT } from '../../constants/exercises';
+import { startOrResumeWorkout } from '../../utils/activeWorkout';
 
 const TABS = ['Exercises', 'Routines'];
 
@@ -69,7 +70,7 @@ function TemplateCard({ tmpl, onPress, onDelete }) {
       <View style={s.tmplActions}>
         <TouchableOpacity
           style={s.tmplStartBtn}
-          onPress={() => router.push({ pathname: '/active-workout', params: { templateId: tmpl.id } })}
+          onPress={() => startOrResumeWorkout(router, { templateId: tmpl.id })}
         >
           <Ionicons name="play" size={14} color={colors.white} />
         </TouchableOpacity>

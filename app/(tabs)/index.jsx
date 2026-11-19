@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../../constants/theme';
 import { getSessions, getVolumeByMuscle, getScheduledWorkouts } from '../../utils/database';
 import { getSuggestions } from '../../utils/suggestions';
+import { loadActiveWorkout, startOrResumeWorkout } from '../../utils/activeWorkout';
 
 function greeting() {
   const h = new Date().getHours();
@@ -46,6 +47,7 @@ export default function HomeScreen() {
   const [topMuscles, setTopMuscles] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [todayScheduled, setTodayScheduled] = useState(null);
+  const [activeWorkout, setActiveWorkout] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,6 +67,7 @@ export default function HomeScreen() {
     setTopMuscles(v.slice(0, 4));
     setSuggestions(sugg.slice(0, 2));
     setTodayScheduled(sched[0] || null);
+    setActiveWorkout(await loadActiveWorkout());
   }
 
   const streak = calcStreak(sessions);
@@ -105,20 +108,37 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Workout in progress */}
+        {activeWorkout ? (
+          <TouchableOpacity
+            style={s.resumeCard}
+            onPress={() => router.push({ pathname: '/active-workout', params: { resume: '1' } })}
+          >
+            <View style={s.resumeIcon}><Ionicons name="play" size={18} color={colors.white} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.resumeTitle}>Resume workout</Text>
+              <Text style={s.resumeSub}>
+                {activeWorkout.name || 'Workout'} · {activeWorkout.loggedCount} set{activeWorkout.loggedCount === 1 ? '' : 's'} logged
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.accent} />
+          </TouchableOpacity>
+        ) : null}
+
         {/* Today's scheduled workout */}
         {todayScheduled ? (
           <View style={s.section}>
             <Text style={s.sectionLabel}>TODAY'S PLAN</Text>
             <TouchableOpacity
               style={[s.todayCard, { borderLeftColor: todayScheduled.color || colors.accent }]}
-              onPress={() => router.push({ pathname: '/active-workout', params: { templateId: todayScheduled.template_id, scheduledId: todayScheduled.id } })}
+              onPress={() => startOrResumeWorkout(router, { templateId: todayScheduled.template_id, scheduledId: todayScheduled.id })}
             >
               <View style={s.todayInfo}>
                 <Text style={s.todayName}>{todayScheduled.template_name || 'Workout'}</Text>
                 <Text style={s.todayMeta}>{todayScheduled.completed ? 'Completed ✓' : 'Scheduled for today'}</Text>
               </View>
               {!todayScheduled.completed && (
-                <TouchableOpacity style={s.startChip} onPress={() => router.push({ pathname: '/active-workout', params: { templateId: todayScheduled.template_id, scheduledId: todayScheduled.id } })}>
+                <TouchableOpacity style={s.startChip} onPress={() => startOrResumeWorkout(router, { templateId: todayScheduled.template_id, scheduledId: todayScheduled.id })}>
                   <Ionicons name="play" size={14} color={colors.white} />
                   <Text style={s.startChipText}>Start</Text>
                 </TouchableOpacity>
@@ -126,7 +146,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <TouchableOpacity style={s.quickStart} onPress={() => router.push('/active-workout')}>
+          <TouchableOpacity style={s.quickStart} onPress={() => startOrResumeWorkout(router)}>
             <View style={s.quickStartLeft}>
               <View style={s.quickStartIcon}><Ionicons name="add" size={22} color={colors.white} /></View>
               <View>
@@ -205,7 +225,7 @@ export default function HomeScreen() {
             <Ionicons name="barbell-outline" size={56} color={colors.textMuted} />
             <Text style={s.emptyTitle}>No workouts yet</Text>
             <Text style={s.emptySub}>Start your first session to begin tracking your progress</Text>
-            <TouchableOpacity style={s.emptyBtn} onPress={() => router.push('/active-workout')}>
+            <TouchableOpacity style={s.emptyBtn} onPress={() => startOrResumeWorkout(router)}>
               <Text style={s.emptyBtnText}>Start First Workout</Text>
             </TouchableOpacity>
           </View>
@@ -250,6 +270,10 @@ const s = StyleSheet.create({
     paddingVertical: spacing.xs + 2, borderRadius: radius.full,
   },
   startChipText: { color: colors.white, fontSize: font.sm, fontWeight: '700' },
+  resumeCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.accent + '1f', borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accent + '88', padding: spacing.md, marginBottom: spacing.md },
+  resumeIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  resumeTitle: { fontSize: font.md, fontWeight: '700', color: colors.text },
+  resumeSub: { fontSize: font.sm, color: colors.textDim, marginTop: 2 },
   quickStart: {
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,

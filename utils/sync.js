@@ -30,7 +30,10 @@ export async function uploadLocalData() {
   // Template exercises
   const templateExercises = await db.getAllAsync('SELECT * FROM template_exercises');
   if (templateExercises.length) {
-    await supabase.from('template_exercises').upsert(templateExercises, { onConflict: 'id' });
+    await supabase.from('template_exercises').upsert(
+      templateExercises.map(t => ({ ...t, user_id: user.id })),
+      { onConflict: 'id' }
+    );
   }
 
   // Sessions
@@ -80,11 +83,11 @@ export async function downloadCloudData() {
 
   const db = await getDb();
   const plan = [
-    ['exercises', ['id', 'name', 'muscle', 'category', 'equipment', 'is_custom', 'notes', 'created_at'], r => r.is_custom === 1],
+    ['exercises', ['id', 'name', 'muscle', 'category', 'equipment', 'is_custom', 'notes', 'is_unilateral', 'created_at'], r => r.is_custom === 1],
     ['workout_templates', ['id', 'name', 'description', 'color', 'created_at']],
     ['template_exercises', ['id', 'template_id', 'exercise_id', 'default_sets', 'default_reps', 'sort_order']],
     ['workout_sessions', ['id', 'template_id', 'name', 'started_at', 'finished_at', 'notes']],
-    ['logged_sets', ['id', 'session_id', 'exercise_id', 'exercise_name', 'set_number', 'weight', 'reps', 'completed', 'created_at']],
+    ['logged_sets', ['id', 'session_id', 'exercise_id', 'exercise_name', 'set_number', 'weight', 'reps', 'completed', 'rir', 'side', 'created_at']],
     ['scheduled_workouts', ['id', 'template_id', 'date', 'completed', 'session_id', 'notes']],
   ];
 

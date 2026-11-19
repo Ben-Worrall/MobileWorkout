@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font } from '../../constants/theme';
 import { getScheduledWorkouts, getTemplates, scheduleWorkout, deleteScheduled, uid } from '../../utils/database';
+import { startOrResumeWorkout } from '../../utils/activeWorkout';
 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -154,7 +155,7 @@ export default function CalendarScreen() {
                   {!sc.completed && (
                     <TouchableOpacity
                       style={s.schedStart}
-                      onPress={() => router.push({ pathname: '/active-workout', params: { templateId: sc.template_id, scheduledId: sc.id } })}
+                      onPress={() => startOrResumeWorkout(router, { templateId: sc.template_id, scheduledId: sc.id })}
                     >
                       <Ionicons name="play" size={14} color={colors.white} />
                     </TouchableOpacity>

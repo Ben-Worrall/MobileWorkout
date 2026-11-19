@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { syncRecord, syncDelete } from './sync';
+import { EXERCISE_SEED_VERSION } from '../constants/exercises';
 
 let db = null;
 
@@ -7,9 +8,32 @@ export async function getDb() {
   if (!db) {
     db = await SQLite.openDatabaseAsync('mobileworkout.db');
     await initSchema(db);
+    await migrate(db);
   }
   return db;
 }
+
+async function addColumnIfMissing(db, table, column, definition) {
+  const cols = await db.getAllAsync(`PRAGMA table_info(${table})`);
+  if (!cols.some(c => c.name === column)) {
+    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+// Versioned, idempotent schema upgrades for existing installs (SQLite has no ADD COLUMN IF NOT EXISTS).
+async function migrate(db) {
+  const row = await db.getFirstAsync('PRAGMA user_version');
+  const version = row ? row.user_version : 0;
+  if (version < 1) {
+    await addColumnIfMissing(db, 'logged_sets', 'rir', 'INTEGER');
+    await addColumnIfMissing(db, 'logged_sets', 'side', 'TEXT');
+    await addColumnIfMissing(db, 'exercises', 'is_unilateral', 'INTEGER DEFAULT 0');
+    await db.execAsync('PRAGMA user_version = 1');
+  }
+}
+
+// A unilateral set is logged as two rows (L and R) but counts as ONE set.
+const SET_COUNT = "SUM(CASE WHEN ls.side = 'R' THEN 0 ELSE 1 END)";
 
 async function initSchema(db) {
   await db.execAsync(`
@@ -117,13 +141,34 @@ export async function getCustomExercises() {
   return db.getAllAsync('SELECT * FROM exercises WHERE is_custom = 1 ORDER BY name');
 }
 
-export async function addCustomExercise({ id, name, muscle, category, equipment, notes }) {
+export async function addCustomExercise({ id, name, muscle, category, equipment, notes, isUnilateral }) {
   const db = await getDb();
+  const uni = isUnilateral ? 1 : 0;
   await db.runAsync(
-    'INSERT INTO exercises (id, name, muscle, category, equipment, is_custom, notes) VALUES (?, ?, ?, ?, ?, 1, ?)',
-    [id, name, muscle, category, equipment || 'Bodyweight', notes || null]
+    'INSERT INTO exercises (id, name, muscle, category, equipment, is_custom, notes, is_unilateral) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
+    [id, name, muscle, category, equipment || 'Bodyweight', notes || null, uni]
   );
-  syncRecord('exercises', { id, name, muscle, category, equipment: equipment || 'Bodyweight', is_custom: 1, notes: notes || null });
+  syncRecord('exercises', { id, name, muscle, category, equipment: equipment || 'Bodyweight', is_custom: 1, notes: notes || null, is_unilateral: uni });
+}
+
+export async function updateCustomExercise({ id, name, muscle, category, equipment, notes, isUnilateral }) {
+  const db = await getDb();
+  const uni = isUnilateral ? 1 : 0;
+  await db.runAsync(
+    'UPDATE exercises SET name = ?, muscle = ?, category = ?, equipment = ?, notes = ?, is_unilateral = ? WHERE id = ? AND is_custom = 1',
+    [name, muscle, category, equipment || 'Bodyweight', notes || null, uni, id]
+  );
+  const row = await db.getFirstAsync('SELECT * FROM exercises WHERE id = ?', [id]);
+  if (row) syncRecord('exercises', row);
+}
+
+export async function exerciseNameExists(name, exceptId = null) {
+  const db = await getDb();
+  const row = await db.getFirstAsync(
+    'SELECT id FROM exercises WHERE lower(name) = lower(?) AND id != ? LIMIT 1',
+    [name.trim(), exceptId || '']
+  );
+  return !!row;
 }
 
 export async function deleteCustomExercise(id) {
@@ -139,7 +184,7 @@ export async function getTemplates() {
   const templates = await db.getAllAsync('SELECT * FROM workout_templates ORDER BY name');
   for (const t of templates) {
     t.exercises = await db.getAllAsync(`
-      SELECT te.*, e.name as exercise_name, e.muscle, e.equipment
+      SELECT te.*, e.name as exercise_name, e.muscle, e.equipment, e.is_unilateral
       FROM template_exercises te
       JOIN exercises e ON e.id = te.exercise_id
       WHERE te.template_id = ?
@@ -154,7 +199,7 @@ export async function getTemplate(id) {
   const t = await db.getFirstAsync('SELECT * FROM workout_templates WHERE id = ?', [id]);
   if (!t) return null;
   t.exercises = await db.getAllAsync(`
-    SELECT te.*, e.name as exercise_name, e.muscle, e.equipment
+    SELECT te.*, e.name as exercise_name, e.muscle, e.equipment, e.is_unilateral
     FROM template_exercises te
     JOIN exercises e ON e.id = te.exercise_id
     WHERE te.template_id = ?
@@ -203,7 +248,7 @@ export async function getSession(id) {
   const session = await db.getFirstAsync('SELECT * FROM workout_sessions WHERE id = ?', [id]);
   if (!session) return null;
   session.sets = await db.getAllAsync(
-    'SELECT * FROM logged_sets WHERE session_id = ? ORDER BY exercise_name, set_number',
+    'SELECT * FROM logged_sets WHERE session_id = ? ORDER BY exercise_name, set_number, side',
     [id]
   );
   return session;
@@ -230,18 +275,22 @@ export async function finishSession(id, notes) {
   if (session) syncRecord('workout_sessions', session);
 }
 
-export async function logSet({ id, sessionId, exerciseId, exerciseName, setNumber, weight, reps }) {
+export async function logSet({ id, sessionId, exerciseId, exerciseName, setNumber, weight, reps, rir = null, side = null }) {
   const db = await getDb();
   await db.runAsync(
-    'INSERT OR REPLACE INTO logged_sets (id, session_id, exercise_id, exercise_name, set_number, weight, reps, completed) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
-    [id, sessionId, exerciseId, exerciseName, setNumber, weight, reps]
+    'INSERT OR REPLACE INTO logged_sets (id, session_id, exercise_id, exercise_name, set_number, weight, reps, completed, rir, side) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
+    [id, sessionId, exerciseId, exerciseName, setNumber, weight, reps, rir, side]
   );
-  syncRecord('logged_sets', { id, session_id: sessionId, exercise_id: exerciseId, exercise_name: exerciseName, set_number: setNumber, weight, reps, completed: 1 });
+  syncRecord('logged_sets', { id, session_id: sessionId, exercise_id: exerciseId, exercise_name: exerciseName, set_number: setNumber, weight, reps, completed: 1, rir, side });
 }
 
-export async function updateSet(id, weight, reps) {
+export async function updateSet(id, weight, reps, rir) {
   const db = await getDb();
-  await db.runAsync('UPDATE logged_sets SET weight = ?, reps = ? WHERE id = ?', [weight, reps, id]);
+  if (rir === undefined) {
+    await db.runAsync('UPDATE logged_sets SET weight = ?, reps = ? WHERE id = ?', [weight, reps, id]);
+  } else {
+    await db.runAsync('UPDATE logged_sets SET weight = ?, reps = ?, rir = ? WHERE id = ?', [weight, reps, rir, id]);
+  }
   const row = await db.getFirstAsync('SELECT * FROM logged_sets WHERE id = ?', [id]);
   if (row) syncRecord('logged_sets', row);
 }
@@ -307,7 +356,7 @@ export async function getVolumeByMuscle(days = 30) {
     SELECT e.muscle,
       SUM(ls.weight * ls.reps) as total_volume,
       COUNT(DISTINCT ls.session_id) as sessions,
-      COUNT(*) as total_sets,
+      ${SET_COUNT} as total_sets,
       MAX(ls.weight) as max_weight
     FROM logged_sets ls
     JOIN exercises e ON e.id = ls.exercise_id
@@ -327,7 +376,7 @@ export async function getVolumeOverTime(exerciseId, days = 90) {
       SUM(ls.weight * ls.reps) as volume,
       MAX(ls.weight) as max_weight,
       SUM(ls.reps) as total_reps,
-      COUNT(*) as sets
+      ${SET_COUNT} as sets
     FROM logged_sets ls
     JOIN workout_sessions ws ON ws.id = ls.session_id
     WHERE ls.exercise_id = ? AND ws.started_at >= ? AND ws.finished_at IS NOT NULL
@@ -343,7 +392,7 @@ export async function getMuscleVolumeOverTime(muscle, days = 90) {
     SELECT
       date(ws.started_at / 1000, 'unixepoch') as workout_date,
       SUM(ls.weight * ls.reps) as volume,
-      COUNT(*) as sets
+      ${SET_COUNT} as sets
     FROM logged_sets ls
     JOIN exercises e ON e.id = ls.exercise_id
     JOIN workout_sessions ws ON ws.id = ls.session_id
@@ -399,7 +448,7 @@ export async function getSessionSummaries(limit = 500) {
   const db = await getDb();
   return db.getAllAsync(`
     SELECT ws.id, ws.name, ws.started_at, ws.finished_at, ws.notes,
-      COUNT(ls.id) as total_sets,
+      SUM(CASE WHEN ls.id IS NULL OR ls.side = 'R' THEN 0 ELSE 1 END) as total_sets,
       COALESCE(SUM(ls.weight * ls.reps), 0) as volume,
       COUNT(DISTINCT ls.exercise_id) as exercises,
       GROUP_CONCAT(DISTINCT e.muscle) as muscles
@@ -422,7 +471,7 @@ export async function getMuscleStatsByWeek(days = 90) {
       strftime('%Y-%W', ws.started_at / 1000, 'unixepoch') as week,
       MIN(date(ws.started_at / 1000, 'unixepoch')) as week_start,
       SUM(ls.weight * ls.reps) as volume,
-      COUNT(*) as sets
+      ${SET_COUNT} as sets
     FROM logged_sets ls
     JOIN exercises e ON e.id = ls.exercise_id
     JOIN workout_sessions ws ON ws.id = ls.session_id
@@ -438,7 +487,7 @@ export async function getMuscleTotalsBetween(fromMs, toMs) {
   return db.getAllAsync(`
     SELECT e.muscle,
       SUM(ls.weight * ls.reps) as volume,
-      COUNT(*) as sets
+      ${SET_COUNT} as sets
     FROM logged_sets ls
     JOIN exercises e ON e.id = ls.exercise_id
     JOIN workout_sessions ws ON ws.id = ls.session_id
@@ -461,22 +510,41 @@ export async function getRecentSetsForExercise(exerciseId, limit = 10) {
 
 // ── Seed built-in exercises ───────────────────────────────────────
 
-export async function seedExercises(builtinExercises) {
-  const db = await getDb();
-  for (const ex of builtinExercises) {
-    await db.runAsync(
-      `INSERT INTO exercises (id, name, muscle, category, equipment, is_custom, notes)
-       VALUES (?, ?, ?, ?, ?, 0, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         name = excluded.name,
-         muscle = excluded.muscle,
-         category = excluded.category,
-         equipment = excluded.equipment,
-         notes = excluded.notes
-       WHERE exercises.is_custom = 0`,
-      [ex.id, ex.name, ex.muscle, ex.category, ex.equipment, ex.notes || null]
-    );
+let seedingPromise = null;
+
+// Upserts the built-in library. Skipped when the same library version was already seeded (cheap on every launch).
+export function seedExercises(builtinExercises) {
+  if (!seedingPromise) {
+    seedingPromise = doSeed(builtinExercises).finally(() => { seedingPromise = null; });
   }
+  return seedingPromise;
+}
+
+async function doSeed(builtinExercises) {
+  const db = await getDb();
+  const signature = `${EXERCISE_SEED_VERSION}:${builtinExercises.length}`;
+  const row = await db.getFirstAsync("SELECT value FROM user_settings WHERE key = 'exercise_seed_sig'");
+  const haveRows = await db.getFirstAsync('SELECT COUNT(*) AS c FROM exercises WHERE is_custom = 0');
+  if (row && row.value === signature && haveRows.c >= builtinExercises.length) return;
+
+  await db.withTransactionAsync(async () => {
+    for (const ex of builtinExercises) {
+      await db.runAsync(
+        `INSERT INTO exercises (id, name, muscle, category, equipment, is_custom, notes, is_unilateral)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           muscle = excluded.muscle,
+           category = excluded.category,
+           equipment = excluded.equipment,
+           notes = excluded.notes,
+           is_unilateral = excluded.is_unilateral
+         WHERE exercises.is_custom = 0`,
+        [ex.id, ex.name, ex.muscle, ex.category, ex.equipment, ex.notes || null, ex.unilateral ? 1 : 0]
+      );
+    }
+    await db.runAsync("INSERT OR REPLACE INTO user_settings (key, value) VALUES ('exercise_seed_sig', ?)", [signature]);
+  });
 }
 
 export async function getExercise(id) {

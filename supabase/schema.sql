@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS public.exercises (
   equipment TEXT,
   is_custom INTEGER DEFAULT 0,
   notes TEXT,
+  is_unilateral INTEGER DEFAULT 0,
   created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW()) * 1000
 );
 
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.workout_templates (
 
 CREATE TABLE IF NOT EXISTS public.template_exercises (
   id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   template_id TEXT NOT NULL REFERENCES public.workout_templates(id) ON DELETE CASCADE,
   exercise_id TEXT NOT NULL,
   default_sets INTEGER DEFAULT 3,
@@ -52,6 +54,8 @@ CREATE TABLE IF NOT EXISTS public.logged_sets (
   weight REAL,
   reps INTEGER,
   completed INTEGER DEFAULT 1,
+  rir INTEGER CHECK (rir BETWEEN 0 AND 10),
+  side TEXT CHECK (side IN ('L','R')),
   created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW()) * 1000
 );
 
@@ -96,8 +100,8 @@ CREATE POLICY sets_policy ON public.logged_sets FOR ALL TO authenticated
 CREATE POLICY scheduled_policy ON public.scheduled_workouts FOR ALL TO authenticated
   USING (user_id = (select auth.uid())) WITH CHECK (user_id = (select auth.uid()));
 CREATE POLICY template_exercises_policy ON public.template_exercises FOR ALL TO authenticated
-  USING (template_id IN (SELECT id FROM public.workout_templates WHERE user_id = (select auth.uid())))
-  WITH CHECK (template_id IN (SELECT id FROM public.workout_templates WHERE user_id = (select auth.uid())));
+  USING (user_id = (select auth.uid()))
+  WITH CHECK (user_id = (select auth.uid()) AND template_id IN (SELECT id FROM public.workout_templates WHERE user_id = (select auth.uid())));
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon;

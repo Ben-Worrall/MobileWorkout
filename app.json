@@ -18,14 +18,27 @@
         "backgroundColor": "#080d1a"
       },
       "package": "com.gymnote.app",
-      "permissions": ["REQUEST_INSTALL_PACKAGES"],
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES",
+        "POST_NOTIFICATIONS",
+        "USE_EXACT_ALARM",
+        "SCHEDULE_EXACT_ALARM",
+        "VIBRATE"
+      ],
       "versionCode": 11
     },
     "plugins": [
       "expo-router",
       "./plugins/withAndroidSettingsFix",
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#4d9fff"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

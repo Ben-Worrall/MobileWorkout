@@ -4,10 +4,9 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 (tokens/keys are in the Claude memory file `project_supabase.md`; GitHub PAT: use `git credential fill` or ask the user).
 
 ## RESUME HERE
-- Current phase: **P1 done, security audit done. Starting P2.**
-- Last thing finished: security audit (RLS hole fixed + verified 20/20, repo/APK scanned). P1 verified (confirm link -> confirmed.html).
-- Next action: P2 step 1 (Supabase SQL migration: rir, side, is_unilateral, template_exercises.user_id) - REMEMBER to update supabase/schema.sql
-  and re-run `scripts/rls-test.js` afterwards. Then continue P3..P7, then the P8 FULL TEST LOOP (user requirement), then P9 release.
+- Current phase: **P3+P4 workout code DONE (untested). Working on P4 step 4 (edit-session/History), then P5.**
+- Last thing finished: P3/P4 code: expo-notifications installed (0.28.19, exact alarm verified in source), manifest perms + notification icon, utils/{timers,notifications,activeWorkout}.js, components/workout/{ExerciseBlock,SetRow,RirPicker,RestTimer,ExercisePicker}.jsx, active-workout.jsx rewritten (timestamp timers, header rest chip + sheet, resume, RIR, L/R), Home Resume card, startOrResumeWorkout() used by Home/Calendar/Library.
+- Next action: edit-session.jsx + history.jsx show/edit rir+side; then P5 analytics; P6 library; P7 exercises; then BUILD and run the P8 loop.
 - Last updated: 2026-11-19
 - NOTE: config changes take ~30-45 s to propagate on Supabase Auth.
 
@@ -72,7 +71,7 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 4. [x] Tested via admin generate_link: link -> 303 -> confirmed.html#access_token... ; user email_confirmed_at set. Test users deleted.
 5. [ ] STILL TO TELL USER: 2 emails/hour built-in limit; offer custom SMTP (Resend) or disabling confirmation.
 
-### P2 - Data model + sync migrations  [ ]  (Supabase FIRST, additive, so old app versions keep working)
+### P2 - Data model + sync migrations  [x] code done 2026-11-19 (emulator upgrade test is in P8)  (Supabase FIRST, additive, so old app versions keep working)
 1. [ ] Supabase SQL via Management API (write JSON file, `curl --data-binary @file`):
        ALTER logged_sets ADD rir INTEGER CHECK (rir BETWEEN 0 AND 10); ADD side TEXT CHECK (side IN ('L','R'));
        ALTER exercises ADD is_unilateral INTEGER DEFAULT 0;
@@ -84,7 +83,7 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 4. [ ] `utils/sync.js`: include new columns in `downloadCloudData` column lists; `syncRecord` for template_exercises now valid.
 5. [ ] TEST: fresh install + upgrade-from-1.1.0 install (data preserved, columns added); cloud round trip (seed with sqlite3 on device, login, wipe app data, login again).
 
-### P3 - Timer rework (non-blocking + background)  [ ]
+### P3 - Timer rework (non-blocking + background)  [x] code done, UNTESTED (test in P8)
 1. [ ] `npx expo install expo-notifications`; add plugin + permissions (`POST_NOTIFICATIONS`, `USE_EXACT_ALARM`, `SCHEDULE_EXACT_ALARM`) in app.json AND
        android/app/src/main/AndroidManifest.xml (android/ is gitignored and hand-edited; keep both in sync). Re-run `scripts/patch-node-modules.js` if needed.
 2. [ ] `utils/notifications.js`: channel "rest-timer" (HIGH importance, vibration), request permission lazily, `scheduleRestEnd(endAt)`, `cancelRest()`.
@@ -100,7 +99,7 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
        remaining time is correct; kill app (`am force-stop`) mid-rest and confirm the notification still fires and resume restores state.
        Also confirm "Add Exercise" and scrolling work with the timer running.
 
-### P4 - Workout UI: RIR + unilateral  [ ]
+### P4 - Workout UI: RIR + unilateral  [~] workout screen code done, UNTESTED; edit-session/History still to do
 1. [ ] `RirPicker` (bottom sheet, buttons 0-10, "Clear"); each set row: kg x reps [RIR chip] tick. RIR defaults to previous set's value, nullable.
 2. [ ] Unilateral exercise block: each set shows L and R sub-rows (own kg/reps/RIR/tick); set complete when both ticked; header menu toggle
        "Unilateral (left/right)" overrides the library default for this workout; rest starts after the second side.

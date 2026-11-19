@@ -57,6 +57,20 @@ async function rest(method, table, token, { query = '', body, prefer } = {}) {
   const exSeen = await rest('GET', 'exercises', tb, { query: '?select=id' });
   check('B CANNOT see A\'s custom exercise', Array.isArray(exSeen.json) && exSeen.json.length === 0);
 
+  // template + its exercises, including the new rir/side columns on logged_sets
+  const tpl = await rest('POST', 'workout_templates', ta, { body: { id: 'tpl-a-' + stamp, user_id: A.id, name: 'A routine' } });
+  check('A can create a template', tpl.status === 201, 'HTTP ' + tpl.status);
+  const te = await rest('POST', 'template_exercises', ta, { body: { id: 'te-a-' + stamp, user_id: A.id, template_id: 'tpl-a-' + stamp, exercise_id: 'bench-press' } });
+  check('A can add an exercise to own template (user_id column)', te.status === 201, 'HTTP ' + te.status);
+  const teB = await rest('POST', 'template_exercises', tb, { body: { id: 'te-b-' + stamp, user_id: B.id, template_id: 'tpl-a-' + stamp, exercise_id: 'bench-press' } });
+  check('B CANNOT add an exercise to A\'s template', teB.status >= 400, 'HTTP ' + teB.status);
+  const teSee = await rest('GET', 'template_exercises', tb, { query: '?select=id' });
+  check('B CANNOT see A\'s template exercises', Array.isArray(teSee.json) && teSee.json.length === 0);
+  const ls = await rest('POST', 'logged_sets', ta, { body: { id: 'ls-a-' + stamp, user_id: A.id, session_id: row.id, exercise_id: 'bench-press', exercise_name: 'Bench Press', set_number: 1, weight: 60, reps: 10, rir: 2, side: 'L' } });
+  check('A can log a set with rir + side', ls.status === 201, 'HTTP ' + ls.status + ' ' + (ls.text || '').slice(0, 80));
+  const badRir = await rest('POST', 'logged_sets', ta, { body: { id: 'ls-bad-' + stamp, user_id: A.id, session_id: row.id, exercise_id: 'bench-press', exercise_name: 'x', set_number: 2, weight: 1, reps: 1, rir: 11 } });
+  check('rir above 10 is rejected', badRir.status >= 400, 'HTTP ' + badRir.status);
+
   // anonymous (not logged in)
   for (const t of ['workout_sessions', 'logged_sets', 'workout_templates', 'template_exercises', 'scheduled_workouts', 'exercises']) {
     const r = await rest('GET', t, null, { query: '?select=*' });

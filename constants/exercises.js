@@ -1,4 +1,6 @@
-// Built-in exercise library
+// Built-in exercise library. Bump EXERCISE_SEED_VERSION whenever the content below changes so installs re-seed.
+export const EXERCISE_SEED_VERSION = 2;
+
 export const BUILTIN_EXERCISES = [
   // ── CHEST ──────────────────────────────────────────
   {

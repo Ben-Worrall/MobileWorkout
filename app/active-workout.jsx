@@ -1,283 +1,237 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  TextInput, Modal, Alert, FlatList, KeyboardAvoidingView, Platform,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal,
+  Alert, KeyboardAvoidingView, Platform, AppState, ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
 import { BUILTIN_EXERCISES } from '../constants/exercises';
 import {
-  getTemplate, getAllExercises, createSession, seedExercises,
-  logSet, deleteSet, deleteSession, finishSession, markScheduledComplete, uid, getSetting,
+  getTemplate, getAllExercises, getExercise, getSession, createSession, seedExercises,
+  logSet, deleteSet, finishSession, markScheduledComplete, uid, getSetting,
 } from '../utils/database';
+import {
+  saveActiveWorkout, clearActiveWorkout, loadActiveWorkout, discardActiveWorkout,
+} from '../utils/activeWorkout';
+import {
+  configureNotifications, ensureNotificationPermission, scheduleRestEnd, cancelRestNotification,
+} from '../utils/notifications';
+import * as T from '../utils/timers';
+import ExerciseBlock, { isSetComplete, completedSetCount } from '../components/workout/ExerciseBlock';
+import ExercisePicker from '../components/workout/ExercisePicker';
+import RirPicker from '../components/workout/RirPicker';
+import { RestChip, RestSheet } from '../components/workout/RestTimer';
 
-const DEFAULT_REST = 90; // fallback if no setting saved
-
-function formatTime(ms) {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function formatSecs(s) {
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function ExerciseBlock({ exercise, sets, onTickSet, onUntickSet, onChangeTarget, onRemove, lastSet }) {
-  const [drafts, setDrafts] = useState({});
-  const mc = muscleColor(exercise.muscle);
-  const target = exercise.target_sets || 3;
-  const defaultReps = String(exercise.default_reps || 10);
-  const loggedCount = sets.length;
-  const allDone = target > 0 && Array.from({ length: target }, (_, i) => i + 1).every(n => sets.some(x => x.set_number === n));
-
-  function draftValue(n, key) {
-    const d = drafts[n]?.[key];
-    if (d !== undefined) return d;
-    if (key === 'weight') return lastSet?.weight ? String(lastSet.weight) : '';
-    return lastSet?.reps ? String(lastSet.reps) : defaultReps;
-  }
-
-  function setDraft(n, key, val) {
-    setDrafts(prev => ({ ...prev, [n]: { ...prev[n], [key]: val } }));
-  }
-
-  function tick(n) {
-    const w = parseFloat(draftValue(n, 'weight')) || 0;
-    const r = parseInt(draftValue(n, 'reps')) || 0;
-    if (!r) { Alert.alert('Enter reps'); return; }
-    onTickSet(exercise, n, w, r);
-  }
-
-  return (
-    <View style={[s.exBlock, { borderTopColor: mc }, allDone && { opacity: 0.55 }]}>
-      <View style={s.exBlockHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.exBlockName, allDone && s.struck]}>{exercise.exercise_name || exercise.name}</Text>
-          <Text style={s.exBlockMuscle}>{exercise.muscle} · {Math.min(loggedCount, target)}/{target} sets</Text>
-        </View>
-        {allDone
-          ? <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-          : <View style={[s.muscleDot, { backgroundColor: mc }]} />}
-        <TouchableOpacity onPress={() => onRemove(exercise)} style={s.removeExBtn} hitSlop={8}>
-          <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
-        </TouchableOpacity>
-      </View>
-
-      {Array.from({ length: target }, (_, i) => i + 1).map(n => {
-        const done = sets.find(x => x.set_number === n);
-        return (
-          <View key={n} style={[s.setRow, done && { backgroundColor: colors.success + '12' }]}>
-            <View style={s.setNumBadge}>
-              <Text style={s.setNumText}>{n}</Text>
-            </View>
-            {done ? (
-              <View style={s.setValues}>
-                <Text style={[s.setValue, s.struck]}>{done.weight > 0 ? `${done.weight} kg` : 'BW'}</Text>
-                <Text style={s.setX}>×</Text>
-                <Text style={[s.setValue, s.struck]}>{done.reps}</Text>
-                <Text style={s.setUnit}>reps</Text>
-              </View>
-            ) : (
-              <View style={s.setValues}>
-                <TextInput
-                  style={s.inlineInput}
-                  keyboardType="decimal-pad"
-                  value={draftValue(n, 'weight')}
-                  onChangeText={v => setDraft(n, 'weight', v)}
-                  placeholder="kg"
-                  placeholderTextColor={colors.textMuted}
-                  selectTextOnFocus
-                />
-                <Text style={s.setX}>×</Text>
-                <TextInput
-                  style={s.inlineInput}
-                  keyboardType="number-pad"
-                  value={draftValue(n, 'reps')}
-                  onChangeText={v => setDraft(n, 'reps', v)}
-                  placeholder="reps"
-                  placeholderTextColor={colors.textMuted}
-                  selectTextOnFocus
-                />
-              </View>
-            )}
-            <TouchableOpacity
-              style={[s.tickBtn, done && { backgroundColor: colors.success, borderColor: colors.success }]}
-              onPress={() => (done ? onUntickSet(done.id) : tick(n))}
-            >
-              <Ionicons name="checkmark" size={18} color={done ? colors.white : colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        );
-      })}
-
-      <View style={s.targetRow}>
-        <TouchableOpacity
-          onPress={() => onChangeTarget(exercise, -1)}
-          disabled={target <= 1 || sets.some(x => x.set_number === target)}
-          style={[s.targetBtn, (target <= 1 || sets.some(x => x.set_number === target)) && { opacity: 0.3 }]}
-        >
-          <Ionicons name="remove" size={16} color={colors.textDim} />
-          <Text style={s.targetText}>Remove set</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => onChangeTarget(exercise, 1)} style={s.targetBtn}>
-          <Ionicons name="add" size={16} color={colors.accent} />
-          <Text style={[s.targetText, { color: colors.accent }]}>Add set</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ── Rest Timer Overlay ───────────────────────────────────────────────────────
-
-function RestTimer({ visible, duration = DEFAULT_REST, onDismiss }) {
-  const [secs, setSecs] = useState(duration);
-  const [running, setRunning] = useState(true);
-  const intervalRef = useRef(null);
-  const totalRef = useRef(duration);
-
-  useEffect(() => {
-    if (!visible) return;
-    totalRef.current = duration;
-    setSecs(duration);
-    setRunning(true);
-    return () => clearInterval(intervalRef.current);
-  }, [visible, duration]);
-
-  useEffect(() => {
-    clearInterval(intervalRef.current);
-    if (!running || !visible) return;
-    intervalRef.current = setInterval(() => {
-      setSecs(prev => {
-        if (prev <= 1) { clearInterval(intervalRef.current); onDismiss(); return 0; }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(intervalRef.current);
-  }, [running, visible]);
-
-  if (!visible) return null;
-
-  const pct = secs / (totalRef.current || duration);
-  const color = secs > 30 ? colors.success : secs > 10 ? colors.warning : colors.danger;
-
-  return (
-    <View style={s.restOverlay}>
-      <View style={s.restCard}>
-        <Text style={s.restLabel}>REST</Text>
-        <Text style={[s.restTime, { color }]}>{formatSecs(secs)}</Text>
-        <View style={s.restBarBg}>
-          <View style={[s.restBarFill, { width: `${pct * 100}%`, backgroundColor: color }]} />
-        </View>
-        <View style={s.restBtns}>
-          <TouchableOpacity style={s.restAdjBtn} onPress={() => setSecs(s => Math.max(0, s - 15))}>
-            <Text style={s.restAdjText}>−15s</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.restToggleBtn} onPress={() => setRunning(r => !r)}>
-            <Ionicons name={running ? 'pause' : 'play'} size={18} color={colors.white} />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.restAdjBtn} onPress={() => setSecs(s => s + 15)}>
-            <Text style={s.restAdjText}>+15s</Text>
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity style={s.restSkip} onPress={onDismiss}>
-          <Text style={s.restSkipText}>Skip</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-// ── Main Screen ──────────────────────────────────────────────────────────────
+const DEFAULT_REST = 90;
+const exId = e => e.exercise_id || e.id;
 
 export default function ActiveWorkout() {
-  const { templateId, scheduledId } = useLocalSearchParams();
+  const { templateId, scheduledId: scheduledParam, resume } = useLocalSearchParams();
 
-  const [sessionId] = useState(uid);
+  const [ready, setReady] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [scheduledId, setScheduledId] = useState(scheduledParam || null);
   const [sessionName, setSessionName] = useState('Quick Workout');
   const [exercises, setExercises] = useState([]);
   const [loggedSets, setLoggedSets] = useState({});
-  const [lastSets, setLastSets] = useState({});
-  const [elapsed, setElapsed] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(false);
+  const [timer, setTimer] = useState(T.newWorkoutTimer());
+  const [rest, setRest] = useState(null);
+  const [now, setNow] = useState(Date.now());
+  const [showRestSheet, setShowRestSheet] = useState(false);
+  const [restDuration, setRestDuration] = useState(DEFAULT_REST);
   const [pickingExercise, setPickingExercise] = useState(false);
   const [allExercises, setAllExercises] = useState([]);
-  const [exSearch, setExSearch] = useState('');
-  const [exMuscleFilter, setExMuscleFilter] = useState('All');
+  const [rirTarget, setRirTarget] = useState(null);
   const [finishing, setFinishing] = useState(false);
   const [notes, setNotes] = useState('');
-  const [showRest, setShowRest] = useState(false);
-  const [restDuration, setRestDuration] = useState(DEFAULT_REST);
-  const timerRef = useRef(null);
-  const startTimeRef = useRef(null);
-  const pausedAtRef = useRef(0);
+  const lastRestExercise = useRef('');
 
+  // ── startup: new workout or resume ───────────────────────────────
   useEffect(() => {
+    configureNotifications().catch(() => {});
+    getSetting('rest_duration', String(DEFAULT_REST)).then(v => setRestDuration(parseInt(v, 10) || DEFAULT_REST));
     init();
-    getSetting('rest_duration', String(DEFAULT_REST)).then(v => setRestDuration(parseInt(v) || DEFAULT_REST));
-    return () => clearInterval(timerRef.current);
   }, []);
 
   async function init() {
+    await seedExercises(BUILTIN_EXERCISES);
+    if (resume === '1') {
+      const saved = await loadActiveWorkout();
+      if (saved) { await restore(saved); return; }
+    }
     let name = 'Quick Workout';
-    let exList = [];
+    let list = [];
     if (templateId) {
       const tmpl = await getTemplate(templateId);
       if (tmpl) {
         name = tmpl.name;
-        exList = tmpl.exercises.map(te => ({
+        list = tmpl.exercises.map(te => ({
           exercise_id: te.exercise_id,
           exercise_name: te.exercise_name,
           muscle: te.muscle,
           equipment: te.equipment,
           target_sets: te.default_sets || 3,
           default_reps: te.default_reps || 10,
+          unilateral: !!te.is_unilateral,
         }));
       }
     }
+    const id = uid();
+    await createSession({ id, name, templateId: templateId || null });
+    setSessionId(id);
     setSessionName(name);
-    setExercises(exList);
-    await createSession({ id: sessionId, name, templateId: templateId || null });
+    setExercises(list);
+    setReady(true);
   }
 
-  function handleStartTimer() {
-    if (timerRunning) return;
-    setTimerRunning(true);
-    startTimeRef.current = Date.now() - pausedAtRef.current;
-    timerRef.current = setInterval(() => setElapsed(Date.now() - startTimeRef.current), 1000);
+  async function restore(saved) {
+    const session = await getSession(saved.sessionId);
+    const byEx = {};
+    for (const st of (session && session.sets) || []) {
+      (byEx[st.exercise_id] = byEx[st.exercise_id] || []).push({
+        id: st.id, set_number: st.set_number, weight: st.weight, reps: st.reps, rir: st.rir, side: st.side,
+      });
+    }
+    const list = [...(saved.exercises || [])];
+    for (const id of Object.keys(byEx)) {
+      if (list.some(e => exId(e) === id)) continue;
+      const info = await getExercise(id);
+      const sets = byEx[id];
+      list.push({
+        exercise_id: id,
+        exercise_name: info ? info.name : sets[0] ? 'Exercise' : 'Exercise',
+        muscle: info ? info.muscle : null,
+        equipment: info ? info.equipment : null,
+        target_sets: Math.max(3, ...sets.map(x => x.set_number)),
+        default_reps: 10,
+        unilateral: sets.some(x => x.side),
+      });
+    }
+    setSessionId(saved.sessionId);
+    setScheduledId(saved.scheduledId || null);
+    setSessionName(saved.name || 'Workout');
+    setExercises(list);
+    setLoggedSets(byEx);
+    setTimer(saved.timer || T.newWorkoutTimer());
+    if (saved.rest && (saved.rest.pausedRemaining != null || saved.rest.endAt > Date.now())) {
+      setRest(saved.rest);
+      if (saved.rest.pausedRemaining == null) scheduleRestEnd(saved.rest.endAt, '');
+    }
+    setNow(Date.now());
+    setReady(true);
   }
 
-  function handlePauseTimer() {
-    clearInterval(timerRef.current);
-    pausedAtRef.current = elapsed;
-    setTimerRunning(false);
+  // ── persistence: survive the app being closed or killed ──────────
+  useEffect(() => {
+    if (!ready || !sessionId) return;
+    saveActiveWorkout({ sessionId, name: sessionName, templateId: templateId || null, scheduledId, exercises, timer, rest });
+  }, [ready, sessionId, sessionName, scheduledId, exercises, timer, rest]);
+
+  // ── clock: one interval, only while something is running ─────────
+  const needsTick = timer.running || (rest && T.restIsRunning(rest));
+  useEffect(() => {
+    if (!needsTick) return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [needsTick]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', st => { if (st === 'active') setNow(Date.now()); });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (rest && T.restIsRunning(rest) && T.restRemaining(rest, now) === 0) {
+      setRest(null);
+      setShowRestSheet(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+  }, [now, rest]);
+
+  // ── timers ───────────────────────────────────────────────────────
+  function toggleWorkoutTimer() {
+    setTimer(t => (t.running ? T.pauseWorkoutTimer(t) : T.startWorkoutTimer(t)));
+    setNow(Date.now());
+  }
+
+  async function beginRest(exerciseName) {
+    lastRestExercise.current = exerciseName || '';
+    const next = T.startRest(restDuration);
+    setRest(next);
+    setNow(Date.now());
+    if (await ensureNotificationPermission()) scheduleRestEnd(next.endAt, exerciseName);
+  }
+
+  function adjustRest(delta) {
+    const next = T.adjustRest(rest, delta);
+    setRest(next);
+    setNow(Date.now());
+    if (next && T.restIsRunning(next)) scheduleRestEnd(next.endAt, lastRestExercise.current);
+  }
+
+  function toggleRest() {
+    if (!rest) return;
+    if (T.restIsRunning(rest)) {
+      setRest(T.pauseRest(rest));
+      cancelRestNotification();
+    } else {
+      const next = T.resumeRest(rest);
+      setRest(next);
+      scheduleRestEnd(next.endAt, lastRestExercise.current);
+    }
+    setNow(Date.now());
+  }
+
+  function skipRest() {
+    setRest(null);
+    setShowRestSheet(false);
+    cancelRestNotification();
+  }
+
+  // ── sets ─────────────────────────────────────────────────────────
+  async function handleTick(exercise, setNumber, side, weight, reps, rir) {
+    const id = exId(exercise);
+    if (!timer.running) setTimer(t => T.startWorkoutTimer(t));
+    const setId = uid();
+    await logSet({
+      id: setId, sessionId, exerciseId: id, exerciseName: exercise.exercise_name || exercise.name,
+      setNumber, weight, reps, rir: rir == null ? null : rir, side: side || null,
+    });
+    const entry = { id: setId, set_number: setNumber, weight, reps, rir: rir == null ? null : rir, side: side || null };
+    const list = [...(loggedSets[id] || []), entry];
+    setLoggedSets(prev => ({ ...prev, [id]: [...(prev[id] || []), entry] }));
+    // A left/right set only finishes (and starts the rest) once both sides are logged.
+    if (isSetComplete(list, setNumber, !!exercise.unilateral)) beginRest(exercise.exercise_name || exercise.name);
+  }
+
+  async function handleUntick(exercise, setObj) {
+    if (!setObj) return;
+    const id = exId(exercise);
+    await deleteSet(setObj.id);
+    setLoggedSets(prev => ({ ...prev, [id]: (prev[id] || []).filter(x => x.id !== setObj.id) }));
   }
 
   function handleChangeTarget(exercise, delta) {
-    const exId = exercise.exercise_id || exercise.id;
-    setExercises(prev => prev.map(e => (e.exercise_id || e.id) === exId
-      ? { ...e, target_sets: Math.max(1, (e.target_sets || 3) + delta) }
-      : e));
+    const id = exId(exercise);
+    setExercises(prev => prev.map(e => (exId(e) === id ? { ...e, target_sets: Math.max(1, (e.target_sets || 3) + delta) } : e)));
+  }
+
+  function handleToggleUnilateral(exercise) {
+    const id = exId(exercise);
+    setExercises(prev => prev.map(e => (exId(e) === id ? { ...e, unilateral: !e.unilateral } : e)));
   }
 
   function handleRemoveExercise(exercise) {
-    const exId = exercise.exercise_id || exercise.id;
+    const id = exId(exercise);
     const name = exercise.exercise_name || exercise.name;
-    const logged = loggedSets[exId] || [];
+    const logged = loggedSets[id] || [];
     async function doRemove() {
       for (const st of logged) await deleteSet(st.id);
-      setLoggedSets(prev => {
-        const next = { ...prev };
-        delete next[exId];
-        return next;
-      });
-      setExercises(prev => prev.filter(e => (e.exercise_id || e.id) !== exId));
+      setLoggedSets(prev => { const next = { ...prev }; delete next[id]; return next; });
+      setExercises(prev => prev.filter(e => exId(e) !== id));
     }
     if (logged.length === 0) { doRemove(); return; }
     Alert.alert('Remove exercise?', `${name} and its ${logged.length} logged set${logged.length === 1 ? '' : 's'} will be removed from this workout.`, [
@@ -286,103 +240,102 @@ export default function ActiveWorkout() {
     ]);
   }
 
-  async function handleAddSet(exercise, setNum, weight, reps) {
-    if (!timerRunning) handleStartTimer();
-    const setId = uid();
-    const exId = exercise.exercise_id || exercise.id;
-    await logSet({ id: setId, sessionId, exerciseId: exId, exerciseName: exercise.exercise_name || exercise.name, setNumber: setNum, weight, reps });
-    setLoggedSets(prev => ({ ...prev, [exId]: [...(prev[exId] || []), { id: setId, set_number: setNum, weight, reps }] }));
-    setLastSets(prev => ({ ...prev, [exId]: { weight, reps } }));
-    setShowRest(true);
-  }
-
-  async function handleDeleteSet(setId) {
-    await deleteSet(setId);
-    setLoggedSets(prev => {
-      const updated = {};
-      for (const [exId, sets] of Object.entries(prev)) updated[exId] = sets.filter(s => s.id !== setId);
-      return updated;
-    });
-  }
-
   async function openExercisePicker() {
     await seedExercises(BUILTIN_EXERCISES);
-    const exs = await getAllExercises();
-    setAllExercises(exs);
+    setAllExercises(await getAllExercises());
     setPickingExercise(true);
   }
 
   function handleAddExercise(ex) {
-    const alreadyAdded = exercises.some(e => (e.exercise_id || e.id) === ex.id);
-    if (!alreadyAdded) {
-      setExercises(prev => [...prev, { exercise_id: ex.id, exercise_name: ex.name, muscle: ex.muscle, equipment: ex.equipment, target_sets: 3, default_reps: 10 }]);
+    if (!exercises.some(e => exId(e) === ex.id)) {
+      setExercises(prev => [...prev, {
+        exercise_id: ex.id, exercise_name: ex.name, muscle: ex.muscle, equipment: ex.equipment,
+        target_sets: 3, default_reps: 10, unilateral: !!ex.is_unilateral,
+      }]);
     }
     setPickingExercise(false);
-    setExSearch('');
+  }
+
+  // ── leaving / finishing ──────────────────────────────────────────
+  const totalRows = Object.values(loggedSets).reduce((a, b) => a + b.length, 0);
+
+  function handleClose() {
+    Alert.alert('Leave workout?', 'You can come back to it later from the Home screen, or discard it.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Keep for later', onPress: () => router.back() },
+      { text: 'Discard', style: 'destructive', onPress: discard },
+    ]);
+  }
+
+  async function discard() {
+    await discardActiveWorkout(sessionId);
+    router.back();
   }
 
   function handleFinish() {
-    const totalSets = Object.values(loggedSets).reduce((a, b) => a + b.length, 0);
-    if (totalSets === 0) {
-      Alert.alert('No sets logged', 'Log at least one set or discard this session.', [
-        { text: 'Discard', style: 'destructive', onPress: async () => { clearInterval(timerRef.current); await deleteSession(sessionId); router.back(); } },
+    if (totalRows === 0) {
+      Alert.alert('No sets logged', 'Log at least one set or discard this workout.', [
+        { text: 'Discard', style: 'destructive', onPress: discard },
         { text: 'Keep going', style: 'cancel' },
       ]);
       return;
     }
-    clearInterval(timerRef.current);
+    setTimer(t => T.pauseWorkoutTimer(t));
     setFinishing(true);
   }
 
   async function confirmFinish() {
     await finishSession(sessionId, notes);
     if (scheduledId) await markScheduledComplete(scheduledId, sessionId);
+    await cancelRestNotification();
+    await clearActiveWorkout();
     router.back();
   }
 
-  function handleDiscard() {
-    Alert.alert('Discard workout?', 'All logged sets will be lost.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: async () => { clearInterval(timerRef.current); await deleteSession(sessionId); router.back(); } },
-    ]);
-  }
-
-  const filteredAll = allExercises.filter(e => {
-    const matchMuscle = exMuscleFilter === 'All' || e.muscle === exMuscleFilter;
-    const matchSearch = !exSearch || e.name.toLowerCase().includes(exSearch.toLowerCase());
-    return matchMuscle && matchSearch;
-  });
-
-  const totalSetsCount = Object.values(loggedSets).reduce((a, b) => a + b.length, 0);
+  // ── derived values ───────────────────────────────────────────────
+  const elapsed = T.workoutElapsed(timer, now);
+  const setsDone = exercises.reduce(
+    (a, e) => a + completedSetCount(loggedSets[exId(e)] || [], e.target_sets || 3, !!e.unilateral), 0
+  );
   const muscles = [...new Set(exercises.map(e => e.muscle).filter(Boolean))];
+  const addedIds = new Set(exercises.map(exId));
+
+  if (!ready) {
+    return (
+      <SafeAreaView style={[s.safe, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={colors.accent} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        {/* Header */}
         <View style={s.header}>
-          <TouchableOpacity onPress={handleDiscard} style={s.headerSide}>
+          <TouchableOpacity onPress={handleClose} style={s.headerSide} accessibilityLabel="Leave workout">
             <Ionicons name="close" size={22} color={colors.textDim} />
           </TouchableOpacity>
           <View style={s.headerCenter}>
-            <Text style={s.headerTitle}>{sessionName}</Text>
-            <TouchableOpacity onPress={timerRunning ? handlePauseTimer : handleStartTimer} style={s.timerRow}>
-              <Ionicons
-                name={timerRunning ? 'pause-circle' : 'play-circle'}
-                size={16}
-                color={timerRunning ? colors.accent : colors.textMuted}
-              />
-              <Text style={[s.timer, { color: timerRunning ? colors.accent : colors.textMuted }]}>
-                {formatTime(elapsed)}
-              </Text>
-            </TouchableOpacity>
+            <Text style={s.headerTitle} numberOfLines={1}>{sessionName}</Text>
+            <View style={s.timerRow}>
+              <TouchableOpacity onPress={toggleWorkoutTimer} style={s.timerBtn} accessibilityLabel="Start or pause workout timer">
+                <Ionicons
+                  name={timer.running ? 'pause-circle' : 'play-circle'}
+                  size={16}
+                  color={timer.running ? colors.accent : colors.textMuted}
+                />
+                <Text style={[s.timer, { color: timer.running ? colors.accent : colors.textMuted }]}>
+                  {T.formatClock(elapsed)}
+                </Text>
+              </TouchableOpacity>
+              <RestChip rest={rest} now={now} onPress={() => setShowRestSheet(true)} />
+            </View>
           </View>
           <TouchableOpacity onPress={handleFinish} style={[s.headerSide, { alignItems: 'flex-end' }]}>
             <Text style={s.finishText}>Finish</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Stats bar */}
         <View style={s.statsBar}>
           <View style={s.statItem}>
             <Text style={s.statVal}>{exercises.length}</Text>
@@ -390,7 +343,7 @@ export default function ActiveWorkout() {
           </View>
           <View style={s.statDivider} />
           <View style={s.statItem}>
-            <Text style={s.statVal}>{totalSetsCount}</Text>
+            <Text style={s.statVal}>{setsDone}</Text>
             <Text style={s.statLbl}>Sets</Text>
           </View>
           <View style={s.statDivider} />
@@ -417,14 +370,15 @@ export default function ActiveWorkout() {
 
           {exercises.map(ex => (
             <ExerciseBlock
-              key={ex.exercise_id || ex.id}
+              key={exId(ex)}
               exercise={ex}
-              sets={loggedSets[ex.exercise_id || ex.id] || []}
-              onTickSet={handleAddSet}
-              onUntickSet={handleDeleteSet}
+              sets={loggedSets[exId(ex)] || []}
+              onTick={handleTick}
+              onUntick={setObj => handleUntick(ex, setObj)}
               onChangeTarget={handleChangeTarget}
               onRemove={handleRemoveExercise}
-              lastSet={lastSets[ex.exercise_id || ex.id]}
+              onToggleUnilateral={handleToggleUnilateral}
+              onOpenRir={setRirTarget}
             />
           ))}
 
@@ -434,80 +388,48 @@ export default function ActiveWorkout() {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Rest timer overlay */}
-        <RestTimer visible={showRest} duration={restDuration} onDismiss={() => setShowRest(false)} />
+        <RestSheet
+          visible={showRestSheet}
+          rest={rest}
+          now={now}
+          onClose={() => setShowRestSheet(false)}
+          onAdjust={adjustRest}
+          onToggle={toggleRest}
+          onSkip={skipRest}
+        />
 
-        {/* Exercise picker modal */}
-        <Modal visible={pickingExercise} transparent animationType="slide" onRequestClose={() => setPickingExercise(false)}>
-          <View style={s.overlay}>
-            <View style={[s.modal, s.pickerModal]}>
-              <View style={s.modalHeader}>
-                <Text style={s.modalTitle}>Add Exercise</Text>
-                <TouchableOpacity onPress={() => setPickingExercise(false)}>
-                  <Ionicons name="close" size={22} color={colors.textDim} />
-                </TouchableOpacity>
-              </View>
-              <View style={s.modalSearch}>
-                <Ionicons name="search" size={16} color={colors.textMuted} />
-                <TextInput
-                  style={s.modalSearchInput}
-                  placeholder="Search..."
-                  placeholderTextColor={colors.textMuted}
-                  value={exSearch}
-                  onChangeText={setExSearch}
-                />
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: spacing.sm, flexDirection: 'row', paddingVertical: spacing.sm, paddingHorizontal: spacing.xs }}>
-                {['All', 'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Glutes', 'Core', 'Cardio', 'Calves'].map(m => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[s.chip, exMuscleFilter === m && { backgroundColor: m === 'All' ? colors.accent : muscleColor(m), borderColor: 'transparent' }]}
-                    onPress={() => setExMuscleFilter(m)}
-                  >
-                    <Text style={[s.chipText, exMuscleFilter === m && { color: colors.white }]}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <FlatList
-                data={filteredAll}
-                keyExtractor={i => i.id}
-                keyboardShouldPersistTaps="handled"
-                renderItem={({ item }) => {
-                  const mc = muscleColor(item.muscle);
-                  const added = exercises.some(e => (e.exercise_id || e.id) === item.id);
-                  return (
-                    <TouchableOpacity
-                      style={[s.pickItem, added && { opacity: 0.45 }]}
-                      onPress={() => handleAddExercise(item)}
-                      disabled={added}
-                    >
-                      <View style={[s.pickDot, { backgroundColor: mc }]} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.pickName}>{item.name}</Text>
-                        <Text style={s.pickMeta}>{item.muscle} · {item.equipment}</Text>
-                      </View>
-                      {added && <Text style={s.addedTag}>Added</Text>}
-                    </TouchableOpacity>
-                  );
-                }}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </View>
-        </Modal>
+        <RirPicker
+          visible={!!rirTarget}
+          value={rirTarget ? rirTarget.value : null}
+          title={rirTarget ? rirTarget.title : ''}
+          onClose={() => setRirTarget(null)}
+          onSelect={v => {
+            if (rirTarget) {
+              rirTarget.apply(v);
+              setRirTarget({ ...rirTarget, value: v });
+            }
+          }}
+        />
 
-        {/* Finish summary modal */}
+        <ExercisePicker
+          visible={pickingExercise}
+          exercises={allExercises}
+          addedIds={addedIds}
+          onPick={handleAddExercise}
+          onClose={() => setPickingExercise(false)}
+        />
+
         <Modal visible={finishing} transparent animationType="fade" onRequestClose={() => setFinishing(false)}>
           <View style={[s.overlay, { justifyContent: 'center', padding: spacing.lg }]}>
             <View style={[s.modal, { borderRadius: radius.xl }]}>
               <Text style={[s.modalTitle, { textAlign: 'center', marginBottom: spacing.md }]}>Finish Workout</Text>
               <View style={s.summaryStats}>
                 <View style={s.summaryItem}>
-                  <Text style={s.summaryVal}>{formatTime(elapsed)}</Text>
+                  <Text style={s.summaryVal}>{T.formatClock(elapsed)}</Text>
                   <Text style={s.summaryLbl}>Duration</Text>
                 </View>
                 <View style={s.summaryItem}>
-                  <Text style={s.summaryVal}>{totalSetsCount}</Text>
+                  <Text style={s.summaryVal}>{setsDone}</Text>
                   <Text style={s.summaryLbl}>Sets</Text>
                 </View>
                 <View style={s.summaryItem}>
@@ -544,7 +466,8 @@ const s = StyleSheet.create({
   headerSide: { width: 60 },
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: font.base, fontWeight: '700', color: colors.text },
-  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  timerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 3 },
+  timerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   timer: { fontSize: font.sm, fontWeight: '600' },
   finishText: { color: colors.accent, fontWeight: '700', fontSize: font.base },
   statsBar: { flexDirection: 'row', backgroundColor: colors.bg2, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },
@@ -554,52 +477,15 @@ const s = StyleSheet.create({
   statLbl: { fontSize: font.xs, color: colors.textMuted },
   musclePip: { width: 8, height: 8, borderRadius: 4 },
   scroll: { flex: 1 },
-  content: { padding: spacing.md, paddingBottom: 120, gap: spacing.md },
-  exBlock: { backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, borderTopWidth: 2, overflow: 'hidden' },
-  exBlockHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-  exBlockName: { fontSize: font.md, fontWeight: '700', color: colors.text },
-  exBlockMuscle: { fontSize: font.sm, color: colors.textDim, marginTop: 2 },
-  muscleDot: { width: 10, height: 10, borderRadius: 5 },
-  setRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderDim },
-  setNumBadge: { width: 24, height: 24, borderRadius: radius.sm, backgroundColor: colors.bg3, alignItems: 'center', justifyContent: 'center', marginRight: spacing.md },
-  setNumText: { fontSize: font.xs, fontWeight: '700', color: colors.textDim },
-  setValues: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  setValue: { fontSize: font.base, fontWeight: '600', color: colors.text },
-  setX: { fontSize: font.sm, color: colors.textMuted },
-  setUnit: { fontSize: font.sm, color: colors.textMuted },
-  removeExBtn: { marginLeft: spacing.md, padding: 2 },
-  struck: { textDecorationLine: 'line-through', color: colors.textMuted },
-  inlineInput: { width: 64, backgroundColor: colors.bg3, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, color: colors.text, fontSize: font.base, fontWeight: '700', textAlign: 'center', paddingVertical: 6 },
-  tickBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  targetRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  targetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
-  targetText: { fontSize: font.sm, fontWeight: '600', color: colors.textDim },
-  addSetRow: { flexDirection: 'row', alignItems: 'flex-end', padding: spacing.md, gap: spacing.sm },
-  inputGroup: { flex: 1, gap: 4 },
-  inputLabel: { fontSize: font.xs, color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
-  numInput: { backgroundColor: colors.bg3, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, color: colors.text, fontSize: font.md, fontWeight: '700', textAlign: 'center', paddingVertical: spacing.sm },
-  inputSep: { fontSize: font.lg, color: colors.textMuted, paddingBottom: spacing.sm },
-  logSetBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.accent, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md },
-  logSetText: { color: colors.white, fontWeight: '700', fontSize: font.sm },
+  content: { padding: spacing.md, paddingBottom: 60, gap: spacing.md },
   addExBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, justifyContent: 'center', backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accent + '44', borderStyle: 'dashed', padding: spacing.md },
   addExText: { color: colors.accent, fontWeight: '600', fontSize: font.base },
   emptyState: { alignItems: 'center', paddingTop: spacing.xxl, gap: spacing.md },
   emptyTitle: { fontSize: font.xl, fontWeight: '700', color: colors.textDim },
   emptySub: { fontSize: font.base, color: colors.textMuted, textAlign: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: '80%', padding: spacing.lg },
-  pickerModal: { height: '80%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+  modal: { backgroundColor: colors.bg2, padding: spacing.lg },
   modalTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text },
-  modalSearch: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bg3, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, height: 40, marginBottom: spacing.xs },
-  modalSearchInput: { flex: 1, color: colors.text, fontSize: font.base },
-  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg2 },
-  chipText: { fontSize: font.sm, fontWeight: '600', color: colors.textDim },
-  pickItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderDim },
-  pickDot: { width: 10, height: 10, borderRadius: 5 },
-  pickName: { fontSize: font.base, fontWeight: '600', color: colors.text },
-  pickMeta: { fontSize: font.sm, color: colors.textMuted, marginTop: 2 },
-  addedTag: { fontSize: font.xs, color: colors.textMuted, fontStyle: 'italic' },
   summaryStats: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.bg3, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md },
   summaryItem: { alignItems: 'center', gap: 4 },
   summaryVal: { fontSize: font.xl, fontWeight: '700', color: colors.text },
@@ -609,17 +495,4 @@ const s = StyleSheet.create({
   saveBtnText: { color: colors.white, fontWeight: '700', fontSize: font.base },
   cancelBtn: { alignItems: 'center', padding: spacing.md, marginTop: spacing.xs },
   cancelBtnText: { color: colors.textDim, fontSize: font.base },
-  // Rest timer
-  restOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: spacing.md, paddingBottom: spacing.lg },
-  restCard: { backgroundColor: colors.bg2, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
-  restLabel: { fontSize: font.xs, fontWeight: '700', color: colors.textMuted, letterSpacing: 1.5 },
-  restTime: { fontSize: font.xxxl, fontWeight: '800' },
-  restBarBg: { width: '100%', height: 4, backgroundColor: colors.bg3, borderRadius: 2, overflow: 'hidden' },
-  restBarFill: { height: '100%', borderRadius: 2 },
-  restBtns: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginTop: spacing.xs },
-  restAdjBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  restAdjText: { fontSize: font.base, fontWeight: '600', color: colors.textDim },
-  restToggleBtn: { backgroundColor: colors.accent, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  restSkip: { paddingVertical: spacing.xs },
-  restSkipText: { fontSize: font.sm, color: colors.textMuted },
 });
