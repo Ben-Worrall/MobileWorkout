@@ -4,10 +4,12 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 (tokens/keys are in the Claude memory file `project_supabase.md`; GitHub PAT: use `git credential fill` or ask the user).
 
 ## RESUME HERE
-- Current phase: **P0 done, starting P1**
-- Last thing finished: plan written
-- Next action: P1 step 1 (Supabase site_url)
+- Current phase: **P1 done, security audit done. Starting P2.**
+- Last thing finished: security audit (RLS hole fixed + verified 20/20, repo/APK scanned). P1 verified (confirm link -> confirmed.html).
+- Next action: P2 step 1 (Supabase SQL migration: rir, side, is_unilateral, template_exercises.user_id) - REMEMBER to update supabase/schema.sql
+  and re-run `scripts/rls-test.js` afterwards. Then continue P3..P7, then the P8 FULL TEST LOOP (user requirement), then P9 release.
 - Last updated: 2026-11-19
+- NOTE: config changes take ~30-45 s to propagate on Supabase Auth.
 
 ## What the user asked for (2026-11-19)
 1. Email confirmation link must work (currently opens localhost; logging in afterwards works).
@@ -63,16 +65,12 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 
 ## PHASES (tick as completed; each phase ends with an emulator test, then update RESUME HERE)
 
-### P1 - Email confirmation fix  [ ]
-1. [ ] Create `docs/confirmed.html` (dark theme like docs/index.html): "Email confirmed - open Gym Note and log in" + button `mobileworkout://` deep link
-       + friendly message if the URL hash contains `error=` (expired link) + note about the hourly email limit not needed.
-2. [ ] Commit+push so GitHub Pages serves it; `curl -I https://ben-worrall.github.io/MobileWorkout/confirmed.html` must be 200.
-3. [ ] PATCH Supabase auth config: `site_url = https://ben-worrall.github.io/MobileWorkout/confirmed.html`,
-       `uri_allow_list = https://ben-worrall.github.io/MobileWorkout/**,mobileworkout://**` (Management API PATCH /config/auth, JSON via file + --data-binary).
-4. [ ] `context/AuthContext.jsx` signUp: pass `options: { emailRedirectTo: 'https://ben-worrall.github.io/MobileWorkout/confirmed.html' }`.
-5. [ ] TEST without an inbox: Admin API `POST /auth/v1/admin/generate_link {type:'signup',email,password}` returns `action_link`;
-       `curl -sIL` it and confirm the final redirect lands on confirmed.html (not localhost). Then delete the test user.
-6. [ ] Tell user about the 2 emails/hour limit and offer custom SMTP (Resend free tier) or turning confirmation off.
+### P1 - Email confirmation fix  [x] DONE 2026-11-19
+1. [x] `docs/confirmed.html` created, pushed, live (HTTP 200 at https://ben-worrall.github.io/MobileWorkout/confirmed.html).
+2. [x] Supabase auth config PATCHed: site_url = that page; uri_allow_list = `https://ben-worrall.github.io/MobileWorkout/**,mobileworkout://**`.
+3. [x] `context/AuthContext.jsx` signUp passes `emailRedirectTo` (ships with the next app build; old app builds also work because site_url is now correct).
+4. [x] Tested via admin generate_link: link -> 303 -> confirmed.html#access_token... ; user email_confirmed_at set. Test users deleted.
+5. [ ] STILL TO TELL USER: 2 emails/hour built-in limit; offer custom SMTP (Resend) or disabling confirmation.
 
 ### P2 - Data model + sync migrations  [ ]  (Supabase FIRST, additive, so old app versions keep working)
 1. [ ] Supabase SQL via Management API (write JSON file, `curl --data-binary @file`):
@@ -141,13 +139,47 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 8. [ ] Target ~400-450 exercises total. Check bundle size and first-launch seed time on the emulator.
 9. [ ] Mention source/licence (Unlicense) in Settings > About.
 
-### P8 - Verify, release, update-test  [ ]
+### P8 - FULL VIRTUAL-MACHINE TEST LOOP  [ ]   (USER REQUIREMENT 2026-11-19 - do this once P2-P7 are built)
+Rules from the user: run the emulator and test EVERYTHING added. If something does not work, DO NOT stop: write it in the
+"FAILURES / FIX LIST" below (what, where, how reproduced, screenshot name), then carry on and finish the whole test pass.
+When the pass is complete: fix everything on the list, rebuild, and test again. Repeat until one complete pass has zero failures.
+Only then go to P9 (release). Record every pass in the "Test pass log".
+
+Checklist (tick per pass; copy it into the log for each pass):
+ AUTH       [ ] launch gate shows when signed out  [ ] Continue without account -> Home, persists after restart  [ ] sign up shows confirm message
+            [ ] login -> Home, cloud data restored on a wiped app  [ ] sign out -> gate with Continue button  [ ] relaunch signed in -> Home directly
+ EMAIL      [ ] generate_link redirect lands on confirmed.html (see P1 test)
+ WORKOUT    [ ] start empty workout  [ ] start from routine  [ ] picker opens, search works, muscle chips readable, new muscles present
+            [ ] add exercise  [ ] remove exercise (with/without sets)  [ ] tick set / untick  [ ] add / remove set  [ ] exercise crosses out when all done
+            [ ] RIR picker 0-10, default carries to next set, clear works  [ ] unilateral exercise shows L/R rows  [ ] toggle unilateral on a normal exercise
+            [ ] finish -> saved, discard -> no leftover session  [ ] volume math (weight x reps, both sides counted)
+ TIMERS     [ ] workout timer play/pause  [ ] rest chip appears after a tick and does NOT block scrolling or "Add Exercise"  [ ] tap chip -> sheet, -15/+15/pause/skip/minimise
+            [ ] HOME button then return: time still correct  [ ] screen off (KEYCODE_POWER) past end: notification posted (dumpsys notification)
+            [ ] force-stop app mid-rest: alarm still fires, reopening resumes workout  [ ] permission prompt on Android 13+ handled
+ HISTORY    [ ] list/month groups/tap to edit  [ ] edit-session shows and edits RIR + side
+ PROGRESS   [ ] overview chart + advancement list  [ ] Volume/Sets/Hard sets toggle  [ ] By Muscle view  [ ] periods 1M/3M/6M/1Y  [ ] avg RIR per muscle
+ EXERCISE   [ ] detail page: description, chart modes incl. Est. 1RM, compared-with-last-time, RIR column, L vs R
+ LIBRARY    [ ] chips readable  [ ] ~400+ exercises present with descriptions  [ ] search/filter  [ ] ADD custom exercise (form usable with keyboard open)
+            [ ] edit/delete custom  [ ] custom exercise usable in workout  [ ] synced to Supabase (query exercises with test user)  [ ] restored after wipe+login
+ ROUTINES   [ ] create routine, start from it  [ ] schedule on calendar, complete it
+ SETTINGS   [ ] rest-timer length picker  [ ] version label  [ ] Check for Updates -> Download & Install from the PREVIOUS release, data preserved
+ DATA       [ ] upgrade install over 1.1.0 keeps data and migrates columns  [ ] fresh install seeds exercises quickly
+ SECURITY   [ ] `node scripts/rls-test.js` (needs env SUPABASE_SERVICE_KEY) -> all PASS  [ ] no secrets in git (`git grep`), none in APK bundle
+
+FAILURES / FIX LIST  (append; mark [x] when fixed AND retested)
+ (none yet)
+
+Test pass log  (append: date, pass #, result, failures found)
+ (none yet)
+
+### P9 - Release  [ ]   (only after a complete zero-failure P8 pass)
 1. [ ] Bump version to 1.2.0 in app.json (version + versionCode), android/app/build.gradle, constants/version.js.
 2. [ ] Build, `aapt dump badging` (versionName, permissions incl. POST_NOTIFICATIONS/USE_EXACT_ALARM).
-3. [ ] Full regression on emulator (login gate, guest, history, overview chart, remove exercise, picker, library chips, updater).
-4. [ ] Publish GitHub release v1.2.0 with BOTH `GymNote.apk` and `GymNote-v1.2.0.apk`; commit + push source (android/ is gitignored).
-5. [ ] In-app update test from the previous version on the emulator (Settings > Check for Updates > Download & Install), data preserved.
-6. [ ] Delete test users/data created in Supabase; update memory notes; tell the user what was NOT tested on a real phone.
+3. [ ] Publish GitHub release v1.2.0 with BOTH `GymNote.apk` and `GymNote-v1.2.0.apk`; commit + push source (android/ is gitignored).
+4. [ ] In-app update test from the previous version on the emulator (Settings > Check for Updates > Download & Install), data preserved.
+5. [ ] Delete test users/data created in Supabase; tell the user what was NOT tested on a real phone.
+6. [ ] SECURITY follow-ups with the user: they rotate/revoke the keys listed in "Security audit" below; then scrub secrets from Claude memory
+       (`project_supabase.md`) and fix the git remote URL.
 
 ## Test environment cheat sheet
 - Emulator AVD `gymtest`: `C:\Users\Ben\android-dev\sdk\emulator\emulator.exe -avd gymtest -no-snapshot -no-audio -gpu swiftshader_indirect`.
@@ -162,6 +194,28 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 - Build: see memory `project_gymnote.md` (JAVA_HOME/ANDROID_HOME, `gradlew.bat assembleRelease --no-daemon`, 3-7 min; run in background).
 - Release: GitHub release + upload APK twice (GymNote.apk + GymNote-vX.Y.Z.apk) with curl `--data-binary`.
 - Syntax check before long builds: `node -e` with `@babel/parser` over changed files.
+
+## Security audit (2026-11-19, requested by user) - DONE, follow-ups below
+Findings and what was done:
+- Repo `Ben-Worrall/MobileWorkout` is PUBLIC. Git history scanned for sb_secret_, sbp_, ghp_, github_pat_, service_role, keystore password, private keys:
+  only hit = `scripts/migrate-supabase.js` containing a 15-character PREFIX of the Supabase secret key (`sb_secret_5NHJF`, not usable). File removed;
+  clean schema now in `supabase/schema.sql`. History not rewritten (fragment is harmless and rotating the key makes it moot).
+- Keystore (`gymnote.keystore`) is gitignored (`*.keystore`), not tracked, not shipped. `android/` is gitignored. No `.env` tracked.
+- Published APK (v1.1.0) scanned: contains only the project URL and the PUBLISHABLE key (public by design). `sb_secret_` text is supabase-js library
+  code. No management token, no PAT, no service-role/secret key.
+- REAL VULNERABILITY FOUND AND FIXED: the old `exercises` RLS policy allowed rows with `user_id IS NULL`, so anyone with the (public) publishable key
+  could INSERT/UPDATE/DELETE ownerless rows without logging in (a probe row proved it; deleted). Fix applied live: all six tables now have
+  `FOR ALL TO authenticated USING/WITH CHECK (user_id = auth.uid())` (template_exercises via template ownership), `exercises.user_id NOT NULL`,
+  and `REVOKE ALL ... FROM anon` (+ default privileges). Verified with `scripts/rls-test.js` (20/20 PASS: cross-user read/update/delete/spoof blocked,
+  anonymous read/write blocked). Re-run it after every schema change (P2 changes template_exercises policy - update schema.sql and retest!).
+- Local plaintext secrets (NOT on GitHub) that the user should rotate: (1) GitHub PAT embedded in the git remote URL inside `.git/config`
+  (fix: `git remote set-url origin https://github.com/Ben-Worrall/MobileWorkout.git` after revoking); (2) the broad "entire account" GitHub PAT the user
+  pasted into chat; (3) Supabase secret key and (4) Supabase Management API token (`sbp_`, full account control - most dangerous) pasted into chat and
+  stored in Claude memory `project_supabase.md`. Revoke/regenerate: github.com/settings/tokens, Supabase dashboard > Settings > API Keys,
+  supabase.com/dashboard/account/tokens. Create a fine-grained GitHub token limited to this repo (Contents: read/write).
+- Optional hardening: Supabase min password length is 6 (app also enforces 6); consider 8+. Weak keystore password `gymnote123` is acceptable only
+  because the keystore never leaves the PC - do NOT change it (would break in-app updates for existing installs). `.github/workflows/build.yml` is dead
+  (only references secrets by name) and can be deleted.
 
 ## Risks / open questions for the user
 - Supabase free email sender = 2 emails/hour. Offer custom SMTP (needs their account) or disable confirmation.
