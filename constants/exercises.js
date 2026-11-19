@@ -929,6 +929,13 @@ export const BUILTIN_EXERCISES = [
 
 export const CATEGORIES = ['All', 'Upper Body', 'Lower Body', 'Core', 'Cardio', 'Full Body'];
 
+export function categoryForMuscle(muscle) {
+  if (['Legs', 'Glutes', 'Calves'].includes(muscle)) return 'Lower Body';
+  if (muscle === 'Core') return 'Core';
+  if (muscle === 'Cardio') return 'Cardio';
+  return 'Upper Body';
+}
+
 export const MUSCLES = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
   'Legs', 'Glutes', 'Calves', 'Core', 'Cardio',

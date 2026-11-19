@@ -134,17 +134,24 @@ export default function ProgressScreen() {
 
   const advancement = volumeByMuscle
     .map(v => {
-      const cur = metric === 'sets' ? v.total_sets || 0 : v.total_volume || 0;
+      const pick = (row, isPrev) => {
+        if (!row) return 0;
+        if (metric === 'sets') return (isPrev ? row.sets : row.total_sets) || 0;
+        if (metric === 'hard') return row.hard_sets || 0;
+        return (isPrev ? row.volume : row.total_volume) || 0;
+      };
       const p = prevTotals.find(x => x.muscle === v.muscle);
-      const prev = p ? (metric === 'sets' ? p.sets || 0 : p.volume || 0) : 0;
+      const cur = pick(v, false);
+      const prev = pick(p, true);
       const pct = prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null;
-      return { muscle: v.muscle, cur, prev, pct };
+      return { muscle: v.muscle, cur, prev, pct, rir: v.avg_rir, prevRir: p ? p.avg_rir : null };
     })
     .filter(a => a.cur > 0 || a.prev > 0)
     .sort((a, b) => b.cur - a.cur);
 
   function fmtMetric(v) {
     if (metric === 'sets') return `${Math.round(v)} sets`;
+    if (metric === 'hard') return `${Math.round(v)} hard`;
     return v >= 1000 ? `${Math.round(v / 100) / 10}k kg` : `${Math.round(v)} kg`;
   }
 
@@ -202,7 +209,7 @@ export default function ProgressScreen() {
               <View style={s.cardHeader}>
                 <Text style={s.cardTitle}>All Muscle Groups</Text>
                 <View style={s.metricRow}>
-                  {[['volume', 'Volume'], ['sets', 'Sets']].map(([key, label]) => (
+                  {[['volume', 'Volume'], ['sets', 'Sets'], ['hard', 'Hard']].map(([key, label]) => (
                     <TouchableOpacity
                       key={key}
                       style={[s.metricBtn, metric === key && s.metricBtnActive]}
@@ -213,7 +220,9 @@ export default function ProgressScreen() {
                   ))}
                 </View>
               </View>
-              <Text style={s.cardSubtitle}>Weekly {metric === 'sets' ? 'sets' : 'volume (kg)'} per muscle. Tap a name to hide it.</Text>
+              <Text style={s.cardSubtitle}>
+                Weekly {metric === 'sets' ? 'sets' : metric === 'hard' ? 'hard sets (within 3 reps of failure)' : 'volume (kg)'} per muscle. Tap a name to hide it.
+              </Text>
               <OverviewChart rows={weekStats} metric={metric} />
             </View>
 
@@ -230,6 +239,9 @@ export default function ProgressScreen() {
                   <View style={[s.advDot, { backgroundColor: muscleColor(a.muscle) }]} />
                   <Text style={s.advName}>{a.muscle}</Text>
                   <Text style={s.advValue}>{fmtMetric(a.cur)}</Text>
+                  <Text style={s.advRir}>
+                    {a.rir != null ? `RIR ${Math.round(a.rir * 10) / 10}` : ''}
+                  </Text>
                   <Text
                     style={[
                       s.advPct,
@@ -333,7 +345,8 @@ const s = StyleSheet.create({
   advRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.borderDim },
   advDot: { width: 10, height: 10, borderRadius: 5, marginRight: spacing.sm },
   advName: { flex: 1, fontSize: font.base, fontWeight: '600', color: colors.text },
-  advValue: { fontSize: font.sm, color: colors.textDim, marginRight: spacing.md },
+  advValue: { fontSize: font.sm, color: colors.textDim, marginRight: spacing.sm },
+  advRir: { width: 52, fontSize: font.xs, color: colors.accent, fontWeight: '600', textAlign: 'right', marginRight: spacing.sm },
   advPct: { minWidth: 64, textAlign: 'right', fontSize: font.sm, fontWeight: '700' },
   prGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   prCard: {

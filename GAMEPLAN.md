@@ -4,9 +4,9 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 (tokens/keys are in the Claude memory file `project_supabase.md`; GitHub PAT: use `git credential fill` or ask the user).
 
 ## RESUME HERE
-- Current phase: **P3+P4 workout code DONE (untested). Working on P4 step 4 (edit-session/History), then P5.**
-- Last thing finished: P3/P4 code: expo-notifications installed (0.28.19, exact alarm verified in source), manifest perms + notification icon, utils/{timers,notifications,activeWorkout}.js, components/workout/{ExerciseBlock,SetRow,RirPicker,RestTimer,ExercisePicker}.jsx, active-workout.jsx rewritten (timestamp timers, header rest chip + sheet, resume, RIR, L/R), Home Resume card, startOrResumeWorkout() used by Home/Calendar/Library.
-- Next action: edit-session.jsx + history.jsx show/edit rir+side; then P5 analytics; P6 library; P7 exercises; then BUILD and run the P8 loop.
+- Current phase: **P3-P6 code DONE (all UNTESTED). Next: P7 exercise expansion, then BUILD and run the P8 loop.**
+- Last thing finished: P4 edit-session RIR/side; P5 queries (getExerciseSessionStats, avg_rir, hard_sets, e1RM) + exercise-detail (Est 1RM chart, compared-with-last-time, L vs R) + Progress Hard-sets toggle & avg RIR; P6 components/ExerciseForm.jsx (create+edit, category derived, unilateral switch, description, dup-name check) wired into Library (pencil+trash) and workout picker (Create new exercise). Reproduced on emulator (v1.1.0): adding DID save but with category "All" - the real-phone failure is unknown (maybe keyboard/signed-in sync) so TEST sync in P8.
+- Next action: P7 (scripts/build-exercises.js -> constants/exercises.generated.js, add Forearms/Traps muscles + colours, bump EXERCISE_SEED_VERSION, unilateral flags on existing 120), then build APK, install over 1.1.0 on emulator and start the P8 loop.
 - Last updated: 2026-11-19
 - NOTE: config changes take ~30-45 s to propagate on Supabase Auth.
 
@@ -99,7 +99,7 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
        remaining time is correct; kill app (`am force-stop`) mid-rest and confirm the notification still fires and resume restores state.
        Also confirm "Add Exercise" and scrolling work with the timer running.
 
-### P4 - Workout UI: RIR + unilateral  [~] workout screen code done, UNTESTED; edit-session/History still to do
+### P4 - Workout UI: RIR + unilateral  [x] code done, UNTESTED
 1. [ ] `RirPicker` (bottom sheet, buttons 0-10, "Clear"); each set row: kg x reps [RIR chip] tick. RIR defaults to previous set's value, nullable.
 2. [ ] Unilateral exercise block: each set shows L and R sub-rows (own kg/reps/RIR/tick); set complete when both ticked; header menu toggle
        "Unilateral (left/right)" overrides the library default for this workout; rest starts after the second side.
@@ -108,14 +108,14 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 5. [ ] TEST on emulator: normal exercise with RIR; unilateral exercise (DB Row) L/R; toggle unilateral on a bilateral exercise; save; edit; DB check
        with sqlite3 (`select exercise_name,set_number,side,weight,reps,rir from logged_sets`).
 
-### P5 - Analytics using RIR and sides  [ ]
+### P5 - Analytics using RIR and sides  [x] code done, UNTESTED
 1. [ ] DB helpers: `getExerciseSessionStats(exerciseId)` -> per session: best e1RM, avg RIR, top weight, total reps, sets, L/R averages.
 2. [ ] `exercise-detail.jsx`: chart mode Volume | Weight | Est. 1RM; "Compared with last time" card (weight, reps, avg RIR, e1RM deltas);
        RIR column in history rows; L vs R comparison with imbalance warning (>10% difference).
 3. [ ] `progress.jsx`: avg RIR per muscle and period-over-period change in the "Your Progress" list; metric toggle gets "Hard sets" (RIR <= 3).
 4. [ ] TEST with seeded data (sqlite3 seed script like before: sessions at different weeks with different RIR) and screenshot every screen.
 
-### P6 - Library: add / edit / sync custom exercises  [ ]
+### P6 - Library: add / edit / sync custom exercises  [x] code done, UNTESTED
 1. [ ] Reproduce the bug on the emulator first (screenshot the add modal with keyboard open), then rebuild the modal: fixed-height sheet or
        KeyboardAvoidingView, Name, Muscle chips, Equipment chips, "Unilateral" switch, Description, derived category (not 'All'), validation, duplicate-name check.
 2. [ ] Allow editing a custom exercise (name/muscle/equipment/notes/unilateral); delete already exists. All call `syncRecord`/`syncDelete`.

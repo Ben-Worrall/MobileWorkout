@@ -34,6 +34,10 @@ async function migrate(db) {
 
 // A unilateral set is logged as two rows (L and R) but counts as ONE set.
 const SET_COUNT = "SUM(CASE WHEN ls.side = 'R' THEN 0 ELSE 1 END)";
+// "Hard" set = taken within 3 reps of failure (RIR 0-3). Sets without an RIR are not counted as hard.
+const HARD_SETS = "SUM(CASE WHEN ls.rir IS NOT NULL AND ls.rir <= 3 AND ls.side IS NOT 'R' THEN 1 ELSE 0 END)";
+// Estimated 1RM (Epley) on EFFECTIVE reps: reps performed + reps left in the tank. Missing RIR counts as 0.
+const E1RM = "(ls.weight * (1 + (ls.reps + COALESCE(ls.rir, 0)) / 30.0))";
 
 async function initSchema(db) {
   await db.execAsync(`
@@ -357,6 +361,8 @@ export async function getVolumeByMuscle(days = 30) {
       SUM(ls.weight * ls.reps) as total_volume,
       COUNT(DISTINCT ls.session_id) as sessions,
       ${SET_COUNT} as total_sets,
+      AVG(ls.rir) as avg_rir,
+      ${HARD_SETS} as hard_sets,
       MAX(ls.weight) as max_weight
     FROM logged_sets ls
     JOIN exercises e ON e.id = ls.exercise_id
@@ -444,6 +450,32 @@ export async function getLastSessionPerMuscle() {
   `);
 }
 
+// One row per finished session containing this exercise, oldest first, with RIR-aware stats.
+export async function getExerciseSessionStats(exerciseId, days = 365) {
+  const db = await getDb();
+  const since = Date.now() - days * 86400000;
+  return db.getAllAsync(`
+    SELECT ws.id AS session_id, ws.started_at,
+      date(ws.started_at / 1000, 'unixepoch') AS workout_date,
+      MAX(ls.weight) AS top_weight,
+      SUM(ls.weight * ls.reps) AS volume,
+      SUM(ls.reps) AS total_reps,
+      ${SET_COUNT} AS sets,
+      AVG(ls.rir) AS avg_rir,
+      ${HARD_SETS} AS hard_sets,
+      MAX(CASE WHEN ls.weight > 0 THEN ${E1RM} END) AS e1rm,
+      AVG(CASE WHEN ls.side = 'L' THEN ls.weight END) AS l_weight,
+      AVG(CASE WHEN ls.side = 'R' THEN ls.weight END) AS r_weight,
+      AVG(CASE WHEN ls.side = 'L' THEN ls.reps END) AS l_reps,
+      AVG(CASE WHEN ls.side = 'R' THEN ls.reps END) AS r_reps
+    FROM logged_sets ls
+    JOIN workout_sessions ws ON ws.id = ls.session_id
+    WHERE ls.exercise_id = ? AND ws.finished_at IS NOT NULL AND ws.started_at >= ?
+    GROUP BY ws.id
+    ORDER BY ws.started_at ASC
+  `, [exerciseId, since]);
+}
+
 export async function getSessionSummaries(limit = 500) {
   const db = await getDb();
   return db.getAllAsync(`
@@ -451,6 +483,7 @@ export async function getSessionSummaries(limit = 500) {
       SUM(CASE WHEN ls.id IS NULL OR ls.side = 'R' THEN 0 ELSE 1 END) as total_sets,
       COALESCE(SUM(ls.weight * ls.reps), 0) as volume,
       COUNT(DISTINCT ls.exercise_id) as exercises,
+      AVG(ls.rir) as avg_rir,
       GROUP_CONCAT(DISTINCT e.muscle) as muscles
     FROM workout_sessions ws
     LEFT JOIN logged_sets ls ON ls.session_id = ws.id
@@ -471,7 +504,9 @@ export async function getMuscleStatsByWeek(days = 90) {
       strftime('%Y-%W', ws.started_at / 1000, 'unixepoch') as week,
       MIN(date(ws.started_at / 1000, 'unixepoch')) as week_start,
       SUM(ls.weight * ls.reps) as volume,
-      ${SET_COUNT} as sets
+      ${SET_COUNT} as sets,
+      AVG(ls.rir) as avg_rir,
+      ${HARD_SETS} as hard_sets
     FROM logged_sets ls
     JOIN exercises e ON e.id = ls.exercise_id
     JOIN workout_sessions ws ON ws.id = ls.session_id
@@ -487,7 +522,9 @@ export async function getMuscleTotalsBetween(fromMs, toMs) {
   return db.getAllAsync(`
     SELECT e.muscle,
       SUM(ls.weight * ls.reps) as volume,
-      ${SET_COUNT} as sets
+      ${SET_COUNT} as sets,
+      AVG(ls.rir) as avg_rir,
+      ${HARD_SETS} as hard_sets
     FROM logged_sets ls
     JOIN exercises e ON e.id = ls.exercise_id
     JOIN workout_sessions ws ON ws.id = ls.session_id

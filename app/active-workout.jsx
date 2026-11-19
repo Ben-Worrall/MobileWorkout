@@ -23,6 +23,7 @@ import * as T from '../utils/timers';
 import ExerciseBlock, { isSetComplete, completedSetCount } from '../components/workout/ExerciseBlock';
 import ExercisePicker from '../components/workout/ExercisePicker';
 import RirPicker from '../components/workout/RirPicker';
+import ExerciseForm from '../components/ExerciseForm';
 import { RestChip, RestSheet } from '../components/workout/RestTimer';
 
 const DEFAULT_REST = 90;
@@ -43,6 +44,7 @@ export default function ActiveWorkout() {
   const [showRestSheet, setShowRestSheet] = useState(false);
   const [restDuration, setRestDuration] = useState(DEFAULT_REST);
   const [pickingExercise, setPickingExercise] = useState(false);
+  const [creatingExercise, setCreatingExercise] = useState(false);
   const [allExercises, setAllExercises] = useState([]);
   const [rirTarget, setRirTarget] = useState(null);
   const [finishing, setFinishing] = useState(false);
@@ -417,6 +419,18 @@ export default function ActiveWorkout() {
           addedIds={addedIds}
           onPick={handleAddExercise}
           onClose={() => setPickingExercise(false)}
+          onCreate={() => { setPickingExercise(false); setTimeout(() => setCreatingExercise(true), 250); }}
+        />
+
+        <ExerciseForm
+          visible={creatingExercise}
+          exercise={null}
+          onClose={() => setCreatingExercise(false)}
+          onSaved={async saved => {
+            setCreatingExercise(false);
+            const row = await getExercise(saved.id);
+            if (row) handleAddExercise(row);
+          }}
         />
 
         <Modal visible={finishing} transparent animationType="fade" onRequestClose={() => setFinishing(false)}>

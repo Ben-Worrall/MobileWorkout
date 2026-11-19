@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
 import { getSession, updateSet, updateSession, deleteSet, logSet, uid } from '../utils/database';
+import RirPicker from '../components/workout/RirPicker';
 
 function formatDuration(ms) {
   if (!ms) return '';
@@ -19,20 +20,22 @@ function formatDuration(ms) {
 function SetEditRow({ set, exerciseId, onUpdate, onDelete }) {
   const [weight, setWeight] = useState(set.weight > 0 ? String(set.weight) : '');
   const [reps, setReps] = useState(String(set.reps));
+  const [rir, setRir] = useState(set.rir == null ? null : set.rir);
+  const [rirOpen, setRirOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   function handleSave() {
     const w = parseFloat(weight) || 0;
     const r = parseInt(reps) || 0;
     if (!r) { Alert.alert('Enter reps'); return; }
-    onUpdate(set.id, w, r);
+    onUpdate(set.id, w, r, rir);
     setDirty(false);
   }
 
   return (
     <View style={s.setRow}>
-      <View style={s.setNumBadge}>
-        <Text style={s.setNumText}>{set.set_number}</Text>
+      <View style={[s.setNumBadge, set.side && { minWidth: 30 }]}>
+        <Text style={s.setNumText}>{set.set_number}{set.side || ''}</Text>
       </View>
       <View style={s.setInputs}>
         <TextInput
@@ -54,7 +57,17 @@ function SetEditRow({ set, exerciseId, onUpdate, onDelete }) {
           placeholderTextColor={colors.textMuted}
           selectTextOnFocus
         />
+        <TouchableOpacity style={[s.rirBtn, rir != null && s.rirBtnSet]} onPress={() => setRirOpen(true)}>
+          <Text style={[s.rirText, rir != null && { color: colors.accent }]}>{rir != null ? `RIR ${rir}` : 'RIR'}</Text>
+        </TouchableOpacity>
       </View>
+      <RirPicker
+        visible={rirOpen}
+        value={rir}
+        title={`Set ${set.set_number}${set.side ? ` (${set.side})` : ''}`}
+        onClose={() => setRirOpen(false)}
+        onSelect={v => { setRir(v); setDirty(true); }}
+      />
       {dirty ? (
         <TouchableOpacity style={s.saveSetBtn} onPress={handleSave}>
           <Ionicons name="checkmark" size={16} color={colors.white} />
@@ -96,11 +109,11 @@ export default function EditSession() {
     setExercises(Object.values(map));
   }
 
-  async function handleUpdateSet(id, weight, reps) {
-    await updateSet(id, weight, reps);
+  async function handleUpdateSet(id, weight, reps, rir) {
+    await updateSet(id, weight, reps, rir);
     setExercises(prev => prev.map(ex => ({
       ...ex,
-      sets: ex.sets.map(s => s.id === id ? { ...s, weight, reps } : s),
+      sets: ex.sets.map(s => s.id === id ? { ...s, weight, reps, rir } : s),
     })));
   }
 
@@ -120,22 +133,33 @@ export default function EditSession() {
   }
 
   async function handleAddSet(exercise) {
-    const lastSet = exercise.sets[exercise.sets.length - 1];
-    const setNum = exercise.sets.length + 1;
-    const newSet = {
-      id: uid(),
-      session_id: sessionId,
-      exercise_id: exercise.exercise_id,
-      exercise_name: exercise.name,
-      set_number: setNum,
-      weight: lastSet?.weight || 0,
-      reps: lastSet?.reps || 10,
-      completed: 1,
-    };
-    await logSet({ id: newSet.id, sessionId, exerciseId: exercise.exercise_id, exerciseName: exercise.name, setNumber: setNum, weight: newSet.weight, reps: newSet.reps });
+    const setNum = exercise.sets.reduce((m, x) => Math.max(m, x.set_number), 0) + 1;
+    const sides = exercise.sets.some(x => x.side) ? ['L', 'R'] : [null];
+    const added = [];
+    for (const side of sides) {
+      const same = exercise.sets.filter(x => (x.side || null) === side);
+      const last = same[same.length - 1];
+      const newSet = {
+        id: uid(),
+        session_id: sessionId,
+        exercise_id: exercise.exercise_id,
+        exercise_name: exercise.name,
+        set_number: setNum,
+        weight: last?.weight || 0,
+        reps: last?.reps || 10,
+        rir: last?.rir == null ? null : last.rir,
+        side,
+        completed: 1,
+      };
+      await logSet({
+        id: newSet.id, sessionId, exerciseId: exercise.exercise_id, exerciseName: exercise.name,
+        setNumber: setNum, weight: newSet.weight, reps: newSet.reps, rir: newSet.rir, side,
+      });
+      added.push(newSet);
+    }
     setExercises(prev => prev.map(ex =>
       ex.exercise_id === exercise.exercise_id
-        ? { ...ex, sets: [...ex.sets, newSet] }
+        ? { ...ex, sets: [...ex.sets, ...added] }
         : ex
     ));
   }
@@ -198,6 +222,7 @@ export default function EditSession() {
                 <Text style={[s.setHeaderText, { flex: 0, width: 32 }]}>#</Text>
                 <Text style={[s.setHeaderText, { flex: 1, textAlign: 'center' }]}>kg</Text>
                 <Text style={[s.setHeaderText, { flex: 1, textAlign: 'center' }]}>reps</Text>
+                <Text style={[s.setHeaderText, { width: 52, textAlign: 'center' }]}>RIR</Text>
                 <View style={{ width: 36 }} />
               </View>
               {ex.sets.map(set => (
@@ -243,6 +268,9 @@ const s = StyleSheet.create({
   setInputs: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   setInput: { flex: 1, backgroundColor: colors.bg3, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, color: colors.text, fontSize: font.base, fontWeight: '600', textAlign: 'center', paddingVertical: 6 },
   setX: { fontSize: font.sm, color: colors.textMuted },
+  rirBtn: { width: 52, paddingVertical: 7, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg3, alignItems: 'center' },
+  rirBtnSet: { borderColor: colors.accent + '88', backgroundColor: colors.accent + '1f' },
+  rirText: { fontSize: font.xs, fontWeight: '700', color: colors.textMuted },
   saveSetBtn: { width: 32, height: 32, borderRadius: radius.sm, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   deleteSetBtn: { width: 32, height: 32, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
   addSetRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.borderDim },

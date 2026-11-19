@@ -1,24 +1,25 @@
 import { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  TextInput, Modal, Alert, FlatList,
+  TextInput, Alert, FlatList,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../../constants/theme';
 import {
-  getAllExercises, addCustomExercise, deleteCustomExercise,
-  getTemplates, deleteTemplate, uid,
+  getAllExercises, deleteCustomExercise,
+  getTemplates, deleteTemplate,
 } from '../../utils/database';
-import { MUSCLES, CATEGORIES, EQUIPMENT } from '../../constants/exercises';
+import { MUSCLES } from '../../constants/exercises';
+import ExerciseForm from '../../components/ExerciseForm';
 import { startOrResumeWorkout } from '../../utils/activeWorkout';
 
 const TABS = ['Exercises', 'Routines'];
 
 const MUSCLE_FILTERS = ['All', ...MUSCLES];
 
-function ExerciseCard({ ex, onPress, onDelete }) {
+function ExerciseCard({ ex, onPress, onDelete, onEdit }) {
   const mc = muscleColor(ex.muscle);
   return (
     <TouchableOpacity style={[s.exCard, { borderLeftColor: mc }]} onPress={() => onPress(ex)}>
@@ -41,9 +42,14 @@ function ExerciseCard({ ex, onPress, onDelete }) {
         </View>
       </View>
       {ex.is_custom ? (
-        <TouchableOpacity onPress={() => onDelete(ex)} style={s.exDel}>
-          <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => onEdit(ex)} style={s.exDel} accessibilityLabel="Edit exercise">
+            <Ionicons name="create-outline" size={18} color={colors.textDim} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => onDelete(ex)} style={s.exDel} accessibilityLabel="Delete exercise">
+            <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
       ) : (
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       )}
@@ -88,8 +94,8 @@ export default function LibraryScreen() {
   const [templates, setTemplates] = useState([]);
   const [search, setSearch] = useState('');
   const [muscleFilter, setMuscleFilter] = useState('All');
-  const [addingExercise, setAddingExercise] = useState(false);
-  const [newEx, setNewEx] = useState({ name: '', muscle: MUSCLES[0], category: CATEGORIES[0], equipment: EQUIPMENT[0] });
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingEx, setEditingEx] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -113,13 +119,8 @@ export default function LibraryScreen() {
     return list;
   }, [exercises, muscleFilter, search]);
 
-  async function handleAddExercise() {
-    if (!newEx.name.trim()) { Alert.alert('Name required'); return; }
-    await addCustomExercise({ id: uid(), ...newEx });
-    setAddingExercise(false);
-    setNewEx({ name: '', muscle: MUSCLES[0], category: CATEGORIES[0], equipment: EQUIPMENT[0] });
-    load();
-  }
+  function openNewExercise() { setEditingEx(null); setFormOpen(true); }
+  function openEditExercise(ex) { setEditingEx(ex); setFormOpen(true); }
 
   async function handleDeleteExercise(ex) {
     Alert.alert('Delete', `Delete "${ex.name}"?`, [
@@ -165,7 +166,7 @@ export default function LibraryScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
-            <TouchableOpacity style={s.addBtn} onPress={() => setAddingExercise(true)}>
+            <TouchableOpacity style={s.addBtn} onPress={openNewExercise}>
               <Ionicons name="add" size={20} color={colors.white} />
             </TouchableOpacity>
           </View>
@@ -191,6 +192,7 @@ export default function LibraryScreen() {
                 ex={item}
                 onPress={ex => router.push({ pathname: '/exercise-detail', params: { exerciseId: ex.id, name: ex.name, muscle: ex.muscle } })}
                 onDelete={handleDeleteExercise}
+                onEdit={openEditExercise}
               />
             )}
             contentContainerStyle={s.listContent}
@@ -224,56 +226,12 @@ export default function LibraryScreen() {
         </ScrollView>
       )}
 
-      {/* Add exercise modal */}
-      <Modal visible={addingExercise} transparent animationType="slide" onRequestClose={() => setAddingExercise(false)}>
-        <View style={s.overlay}>
-          <View style={s.modal}>
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>New Exercise</Text>
-              <TouchableOpacity onPress={() => setAddingExercise(false)}>
-                <Ionicons name="close" size={22} color={colors.textDim} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView>
-              <Text style={s.fieldLabel}>Name</Text>
-              <TextInput
-                style={s.fieldInput}
-                placeholder="e.g. Cable Fly"
-                placeholderTextColor={colors.textMuted}
-                value={newEx.name}
-                onChangeText={v => setNewEx(p => ({ ...p, name: v }))}
-              />
-              <Text style={s.fieldLabel}>Muscle</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
-                {MUSCLES.map(m => (
-                  <TouchableOpacity
-                    key={m}
-                    style={[s.chip, s.chipSm, newEx.muscle === m && { backgroundColor: muscleColor(m), borderColor: 'transparent' }]}
-                    onPress={() => setNewEx(p => ({ ...p, muscle: m }))}
-                  >
-                    <Text style={[s.chipText, newEx.muscle === m && { color: colors.white }]}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <Text style={s.fieldLabel}>Equipment</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.lg }}>
-                {EQUIPMENT.map(eq => (
-                  <TouchableOpacity
-                    key={eq}
-                    style={[s.chip, s.chipSm, newEx.equipment === eq && { backgroundColor: colors.accent, borderColor: 'transparent' }]}
-                    onPress={() => setNewEx(p => ({ ...p, equipment: eq }))}
-                  >
-                    <Text style={[s.chipText, newEx.equipment === eq && { color: colors.white }]}>{eq}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={s.saveBtn} onPress={handleAddExercise}>
-                <Text style={s.saveBtnText}>Add Exercise</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <ExerciseForm
+        visible={formOpen}
+        exercise={editingEx}
+        onClose={() => setFormOpen(false)}
+        onSaved={() => { setFormOpen(false); load(); }}
+      />
     </SafeAreaView>
   );
 }

@@ -4,7 +4,33 @@ import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
-import { getVolumeOverTime, getRecentSetsForExercise, getPersonalRecords, getExercise } from '../utils/database';
+import { getExerciseSessionStats, getRecentSetsForExercise, getPersonalRecords, getExercise } from '../utils/database';
+
+const fmt1 = v => (v == null ? '—' : (Math.round(v * 10) / 10).toString());
+
+function CompareRow({ label, prev, cur, unit = '', higherIsBetter = true, neutral = false, decimals = 0 }) {
+  const f = v => (v == null ? '—' : `${decimals ? fmt1(v) : Math.round(v)}${unit}`);
+  const diff = prev != null && cur != null ? cur - prev : null;
+  const tone = diff == null || diff === 0 ? colors.textDim : neutral ? colors.accent : (diff > 0) === higherIsBetter ? colors.success : colors.danger;
+  const diffText = diff == null ? '' : `${diff > 0 ? '+' : ''}${decimals ? fmt1(diff) : Math.round(diff)}${unit}`;
+  return (
+    <View style={cmp.row}>
+      <Text style={cmp.label}>{label}</Text>
+      <Text style={cmp.prev}>{f(prev)}</Text>
+      <Ionicons name="arrow-forward" size={12} color={colors.textMuted} />
+      <Text style={cmp.cur}>{f(cur)}</Text>
+      <Text style={[cmp.diff, { color: tone }]}>{diffText}</Text>
+    </View>
+  );
+}
+
+const cmp = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.borderDim },
+  label: { flex: 1, fontSize: font.sm, color: colors.textDim, fontWeight: '600' },
+  prev: { width: 56, textAlign: 'right', fontSize: font.sm, color: colors.textMuted },
+  cur: { width: 56, fontSize: font.sm, color: colors.text, fontWeight: '700' },
+  diff: { width: 62, textAlign: 'right', fontSize: font.sm, fontWeight: '700' },
+});
 
 const PERIODS = [
   { label: '1M', days: 30 },
@@ -23,10 +49,10 @@ function MiniBar({ value, max, color }) {
 }
 
 function SimpleChart({ data, color, valueKey = 'volume', height = 110 }) {
-  if (!data || data.length < 2) {
+  if (!data || data.length < 1 || !data.some(d => d[valueKey] > 0)) {
     return (
       <View style={{ height, backgroundColor: colors.bg3, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: colors.textMuted, fontSize: font.sm }}>Log more sessions to see your chart</Text>
+        <Text style={{ color: colors.textMuted, fontSize: font.sm }}>Log a workout with this exercise to see your chart</Text>
       </View>
     );
   }
@@ -34,13 +60,14 @@ function SimpleChart({ data, color, valueKey = 'volume', height = 110 }) {
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
+  const flat = max === min;
 
   return (
     <View style={{ height }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: height - 20, gap: 2 }}>
         {data.map((d, i) => {
-          const h = Math.max(2, ((values[i] - min) / range) * (height - 28));
-          return <View key={i} style={{ flex: 1, height: h, backgroundColor: color, borderRadius: 2, opacity: 0.8 }} />;
+          const h = flat ? (height - 28) * 0.55 : Math.max(2, ((values[i] - min) / range) * (height - 28));
+          return <View key={i} style={{ flex: 1, maxWidth: 40, height: h, backgroundColor: color, borderRadius: 2, opacity: 0.8 }} />;
         })}
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
@@ -54,7 +81,7 @@ function SimpleChart({ data, color, valueKey = 'volume', height = 110 }) {
 export default function ExerciseDetail() {
   const { exerciseId, name, muscle } = useLocalSearchParams();
   const [period, setPeriod] = useState(PERIODS[1]);
-  const [volumeData, setVolumeData] = useState([]);
+  const [stats, setStats] = useState([]);
   const [recentSets, setRecentSets] = useState([]);
   const [pr, setPr] = useState(null);
   const [chartMode, setChartMode] = useState('volume');
@@ -69,13 +96,13 @@ export default function ExerciseDetail() {
   );
 
   async function load() {
-    const [vol, sets, records, ex] = await Promise.all([
-      getVolumeOverTime(exerciseId, period.days),
-      getRecentSetsForExercise(exerciseId, 30),
+    const [st, sets, records, ex] = await Promise.all([
+      getExerciseSessionStats(exerciseId, period.days),
+      getRecentSetsForExercise(exerciseId, 60),
       getPersonalRecords(),
       getExercise(exerciseId),
     ]);
-    setVolumeData(vol);
+    setStats(st);
     setRecentSets(sets);
     setExerciseData(ex);
     const myPr = records.find(r => r.exercise_id === exerciseId);
@@ -90,9 +117,16 @@ export default function ExerciseDetail() {
     return acc;
   }, {});
 
-  const totalVol = volumeData.reduce((a, b) => a + (b.volume || 0), 0);
-  const totalSets = volumeData.reduce((a, b) => a + (b.sets || 0), 0);
-  const maxWeight = volumeData.reduce((a, b) => Math.max(a, b.max_weight || 0), 0);
+  const totalSets = stats.reduce((a, b) => a + (b.sets || 0), 0);
+  const maxWeight = stats.reduce((a, b) => Math.max(a, b.top_weight || 0), 0);
+  const cur = stats.length ? stats[stats.length - 1] : null;
+  const prev = stats.length > 1 ? stats[stats.length - 2] : null;
+  const withSides = [...stats].reverse().find(x => x.l_weight != null || x.r_weight != null);
+  const strength = (w, r) => (w == null || r == null ? null : w * (1 + r / 30));
+  const lStr = withSides ? strength(withSides.l_weight, withSides.l_reps) : null;
+  const rStr = withSides ? strength(withSides.r_weight, withSides.r_reps) : null;
+  const imbalance = lStr && rStr ? Math.abs(lStr - rStr) / Math.max(lStr, rStr) : null;
+  const chartKey = chartMode === 'volume' ? 'volume' : chartMode === 'weight' ? 'top_weight' : 'e1rm';
 
   return (
     <SafeAreaView style={s.safe}>
@@ -165,10 +199,76 @@ export default function ExerciseDetail() {
               >
                 <Text style={[s.modeBtnText, chartMode === 'weight' && { color: colors.white }]}>Weight</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.modeBtn, chartMode === 'e1rm' && { backgroundColor: mc }]}
+                onPress={() => setChartMode('e1rm')}
+              >
+                <Text style={[s.modeBtnText, chartMode === 'e1rm' && { color: colors.white }]}>Est. 1RM</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <SimpleChart data={volumeData} color={mc} valueKey={chartMode === 'volume' ? 'volume' : 'max_weight'} />
+          <SimpleChart data={stats} color={mc} valueKey={chartKey} />
+          {chartMode === 'e1rm' ? (
+            <Text style={s.footnote}>Estimated 1RM = weight × (1 + (reps + reps in reserve) ÷ 30). Logging RIR makes it more accurate.</Text>
+          ) : null}
         </View>
+
+        {/* Compared with last time */}
+        <View style={s.card}>
+          <Text style={s.cardTitle}>Compared with last time</Text>
+          {cur && prev ? (
+            <>
+              <Text style={s.cardSub}>
+                {new Date(prev.started_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} → {new Date(cur.started_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+              </Text>
+              <CompareRow label="Top weight" prev={prev.top_weight} cur={cur.top_weight} unit=" kg" decimals={1} />
+              <CompareRow label="Est. 1RM" prev={prev.e1rm} cur={cur.e1rm} unit=" kg" decimals={1} />
+              <CompareRow label="Total reps" prev={prev.total_reps} cur={cur.total_reps} />
+              <CompareRow label="Sets" prev={prev.sets} cur={cur.sets} />
+              <CompareRow label="Avg reps in reserve" prev={prev.avg_rir} cur={cur.avg_rir} neutral decimals={1} />
+              {cur.avg_rir != null && prev.avg_rir != null ? (
+                <Text style={s.footnote}>
+                  {cur.avg_rir > prev.avg_rir
+                    ? 'You finished with more in reserve than last time, so it felt easier.'
+                    : cur.avg_rir < prev.avg_rir
+                    ? 'You trained closer to failure than last time.'
+                    : 'Same effort as last time.'}
+                </Text>
+              ) : (
+                <Text style={s.footnote}>Log reps in reserve (RIR) on your sets to compare effort too.</Text>
+              )}
+            </>
+          ) : (
+            <Text style={s.cardSub}>Do this exercise in two workouts and you will see how it changed here.</Text>
+          )}
+        </View>
+
+        {/* Left vs right */}
+        {withSides ? (
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Left vs right</Text>
+            <Text style={s.cardSub}>Latest session with both sides</Text>
+            <View style={s.lrRow}>
+              <View style={s.lrCol}>
+                <Text style={s.lrSide}>LEFT</Text>
+                <Text style={s.lrVal}>{fmt1(withSides.l_weight)} kg</Text>
+                <Text style={s.lrSub}>{fmt1(withSides.l_reps)} reps avg</Text>
+              </View>
+              <View style={s.lrCol}>
+                <Text style={[s.lrSide, { color: colors.purple }]}>RIGHT</Text>
+                <Text style={s.lrVal}>{fmt1(withSides.r_weight)} kg</Text>
+                <Text style={s.lrSub}>{fmt1(withSides.r_reps)} reps avg</Text>
+              </View>
+            </View>
+            {imbalance != null ? (
+              <Text style={[s.footnote, imbalance > 0.1 && { color: colors.warning }]}>
+                {imbalance > 0.1
+                  ? `${lStr > rStr ? 'Left' : 'Right'} side is about ${Math.round(imbalance * 100)}% stronger. Consider extra work for the weaker side.`
+                  : 'Both sides are within 10% of each other.'}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Recent sessions */}
         {Object.keys(sessionGroups).length > 0 && (
@@ -177,12 +277,16 @@ export default function ExerciseDetail() {
             {Object.entries(sessionGroups).slice(0, 8).map(([date, sets]) => {
               const maxW = Math.max(...sets.map(s => s.weight || 0));
               const totalReps = sets.reduce((a, b) => a + (b.reps || 0), 0);
+              const rirs = sets.filter(x => x.rir != null).map(x => x.rir);
+              const avgRir = rirs.length ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
+              const setCount = sets.filter(x => x.side !== 'R').length;
               return (
                 <View key={date} style={s.historyRow}>
                   <Text style={s.historyDate}>{date}</Text>
                   <View style={s.historyStats}>
-                    <Text style={s.historyStat}>{sets.length} sets</Text>
+                    <Text style={s.historyStat}>{setCount} sets</Text>
                     <Text style={s.historyStat}>{totalReps} reps</Text>
+                    {avgRir != null && <Text style={s.historyStat}>RIR {fmt1(avgRir)}</Text>}
                     {maxW > 0 && <Text style={[s.historyStat, { color: mc, fontWeight: '700' }]}>{maxW} kg max</Text>}
                   </View>
                   <MiniBar
@@ -235,6 +339,13 @@ const s = StyleSheet.create({
   chartModeRow: { flexDirection: 'row', backgroundColor: colors.bg3, borderRadius: radius.md, padding: 2 },
   modeBtn: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.sm },
   modeBtnText: { fontSize: font.sm, fontWeight: '600', color: colors.textDim },
+  cardSub: { fontSize: font.sm, color: colors.textMuted, marginTop: 2, marginBottom: spacing.sm },
+  footnote: { fontSize: font.xs, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16 },
+  lrRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
+  lrCol: { flex: 1, backgroundColor: colors.bg2, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', gap: 2 },
+  lrSide: { fontSize: font.xs, fontWeight: '800', color: colors.accent, letterSpacing: 1 },
+  lrVal: { fontSize: font.lg, fontWeight: '700', color: colors.text },
+  lrSub: { fontSize: font.xs, color: colors.textMuted },
   historyRow: { paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderDim, gap: 4 },
   historyDate: { fontSize: font.sm, fontWeight: '700', color: colors.text },
   historyStats: { flexDirection: 'row', gap: spacing.md },

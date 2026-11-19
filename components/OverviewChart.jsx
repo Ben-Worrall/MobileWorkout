@@ -10,8 +10,10 @@ const PAD_R = 12;
 const PAD_T = 12;
 const PAD_B = 24;
 
+const FIELD = { volume: 'volume', sets: 'sets', hard: 'hard_sets' };
+
 function fmt(v, metric) {
-  if (metric === 'sets') return String(Math.round(v));
+  if (metric === 'sets' || metric === 'hard') return String(Math.round(v));
   if (v >= 1000) return `${Math.round(v / 100) / 10}k`;
   return String(Math.round(v));
 }
@@ -24,7 +26,7 @@ export default function OverviewChart({ rows, metric }) {
     const totals = {};
     for (const r of rows) {
       if (!weekMap.has(r.week)) weekMap.set(r.week, r.week_start);
-      totals[r.muscle] = (totals[r.muscle] || 0) + (r[metric] || 0);
+      totals[r.muscle] = (totals[r.muscle] || 0) + (r[FIELD[metric]] || 0);
     }
     const weeks = [...weekMap.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
     const order = Object.keys(totals).filter(m => totals[m] > 0).sort((a, b) => totals[b] - totals[a]);
@@ -32,7 +34,7 @@ export default function OverviewChart({ rows, metric }) {
     for (const m of order) {
       series[m] = weeks.map(([wk]) => {
         const hit = rows.find(r => r.muscle === m && r.week === wk);
-        return hit ? hit[metric] || 0 : 0;
+        return hit ? hit[FIELD[metric]] || 0 : 0;
       });
     }
     return { weeks, series, order };
@@ -44,6 +46,8 @@ export default function OverviewChart({ rows, metric }) {
         <Text style={s.emptyText}>
           {metric === 'volume'
             ? 'No weighted sets in this period yet. Switch to Sets to include bodyweight work.'
+            : metric === 'hard'
+            ? 'No hard sets yet. Log reps in reserve (RIR 0-3) on your sets and they will show here.'
             : 'Log a workout to see your muscle groups here.'}
         </Text>
       </View>
