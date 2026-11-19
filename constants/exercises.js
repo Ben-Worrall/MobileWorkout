@@ -1,7 +1,9 @@
 // Built-in exercise library. Bump EXERCISE_SEED_VERSION whenever the content below changes so installs re-seed.
-export const EXERCISE_SEED_VERSION = 2;
+import { GENERATED_EXERCISES } from './exercises.generated';
 
-export const BUILTIN_EXERCISES = [
+export const EXERCISE_SEED_VERSION = 3;
+
+const HAND_EXERCISES = [
   // ── CHEST ──────────────────────────────────────────
   {
     id: 'bench-press',
@@ -927,6 +929,38 @@ export const BUILTIN_EXERCISES = [
   },
 ];
 
+
+// Common movements the open dataset lacks or names awkwardly, written by hand.
+const EXTRA_EXERCISES = [
+  { id: 'kettlebell-swing', name: 'Kettlebell Swing', muscle: 'Glutes', category: 'Lower Body', equipment: 'Kettlebell', notes: 'Hinge at the hips with a kettlebell between your legs, then snap your hips forward to swing it to chest height. The power comes from the glutes and hamstrings, not the arms. Keep your back flat and let the bell float.' },
+  { id: 'farmers-walk', name: "Farmer's Walk", muscle: 'Forearms', category: 'Upper Body', equipment: 'Dumbbell', notes: 'Hold a heavy dumbbell in each hand at your sides and walk with short, quick steps, shoulders back and core braced. Builds grip, forearms, traps and trunk stability. Go for distance or time.' },
+  { id: 'dead-hang', name: 'Dead Hang', muscle: 'Forearms', category: 'Upper Body', equipment: 'Bodyweight', notes: 'Hang from a pull-up bar with an overhand grip and relaxed shoulders for as long as you can. Improves grip endurance and decompresses the spine. Build up the time gradually.' },
+  { id: 'hanging-knee-raise', name: 'Hanging Knee Raise', muscle: 'Core', category: 'Core', equipment: 'Bodyweight', notes: 'Hang from a bar and draw your knees up toward your chest by curling your pelvis, then lower slowly without swinging. An easier alternative to the straight-leg raise for the lower abs.' },
+  { id: 'bird-dog', name: 'Bird Dog', muscle: 'Core', category: 'Core', equipment: 'Bodyweight', unilateral: true, notes: 'On hands and knees, extend the opposite arm and leg until they are level with your back, hold briefly, then switch. Trains core stability and the lower back without loading the spine.' },
+  { id: 'hollow-hold', name: 'Hollow Body Hold', muscle: 'Core', category: 'Core', equipment: 'Bodyweight', notes: 'Lie on your back, press your lower back into the floor, then lift your shoulders and straight legs a few inches off the ground and hold. A foundational gymnastics core exercise.' },
+  { id: 'cable-pull-through', name: 'Cable Pull Through', muscle: 'Glutes', category: 'Lower Body', equipment: 'Cable', notes: 'Face away from a low cable with a rope between your legs. Hinge back, then drive your hips forward to stand tall, squeezing the glutes. A gentle way to learn the hip hinge.' },
+  { id: 'db-pullover', name: 'Dumbbell Pullover', muscle: 'Chest', category: 'Upper Body', equipment: 'Dumbbell', notes: 'Lie across a bench holding one dumbbell with both hands above your chest. Lower it in an arc behind your head with slightly bent elbows, then pull it back over your chest. Stretches the chest and lats.' },
+  { id: 'reverse-pec-deck', name: 'Reverse Pec Deck', muscle: 'Shoulders', category: 'Upper Body', equipment: 'Machine', notes: 'Sit facing the pec deck pad and pull the handles out and back in a wide arc, squeezing your shoulder blades. Isolates the rear delts and upper back with no balance required.' },
+  { id: 'wall-sit', name: 'Wall Sit', muscle: 'Legs', category: 'Lower Body', equipment: 'Bodyweight', notes: 'Slide down a wall until your thighs are parallel to the floor, knees over ankles, and hold. A simple isometric test of quad endurance.' },
+  { id: 'neutral-grip-pull-up', name: 'Neutral Grip Pull Up', muscle: 'Back', category: 'Upper Body', equipment: 'Bodyweight', notes: 'Pull up using parallel handles with palms facing each other. Easier on the shoulders and elbows than a wide overhand grip while still hitting the lats and biceps hard.' },
+  { id: 'assisted-pull-up', name: 'Assisted Pull Up Machine', muscle: 'Back', category: 'Upper Body', equipment: 'Machine', notes: 'Kneel on the pad and grip the handles; the counterweight reduces your bodyweight so you can practise full pull-ups. Lower the assistance as you get stronger.' },
+  { id: 'trap-bar-deadlift', name: 'Trap Bar Deadlift', muscle: 'Legs', category: 'Full Body', equipment: 'Barbell', notes: 'Stand inside a hex bar, grip the handles, and stand up by driving through the floor. The neutral grip and centred load make it friendlier on the lower back than a straight-bar deadlift.' },
+  { id: 'landmine-row', name: 'Landmine Row', muscle: 'Back', category: 'Upper Body', equipment: 'Barbell', notes: 'Anchor a barbell in a corner, straddle it, hinge forward and row the loaded end to your lower chest. A joint-friendly rowing variation for the mid back.' },
+  { id: 'dumbbell-lateral-lunge', name: 'Lateral Lunge', muscle: 'Legs', category: 'Lower Body', equipment: 'Dumbbell', unilateral: true, notes: 'Step wide to one side, sit back into that hip keeping the other leg straight, then push back to the middle. Works the quads, glutes and adductors in the frontal plane.' },
+  { id: 'cable-woodchop-low', name: 'Low to High Cable Chop', muscle: 'Core', category: 'Core', equipment: 'Cable', unilateral: true, notes: 'Set the cable low, pull the handle diagonally up across your body while rotating through the torso, then return under control. Trains rotational power in the obliques.' },
+];
+
+// Existing hand-written exercises that are naturally performed one side at a time.
+const UNILATERAL_IDS = new Set([
+  'concentration-curl', 'db-row', 'lunges', 'walking-lunges', 'bulgarian-split', 'single-leg-calf', 'db-kickback',
+  'side-plank', 'single-arm-pushdown', 'cable-kickback', 'donkey-kick', 'fire-hydrant', 'single-leg-hip-thrust',
+  'cable-lateral-raise', 'incline-db-row', 'zottman-curl',
+]);
+
+export const BUILTIN_EXERCISES = [...HAND_EXERCISES, ...EXTRA_EXERCISES, ...GENERATED_EXERCISES].map(e =>
+  UNILATERAL_IDS.has(e.id) ? { ...e, unilateral: true } : e
+);
+
 export const CATEGORIES = ['All', 'Upper Body', 'Lower Body', 'Core', 'Cardio', 'Full Body'];
 
 export function categoryForMuscle(muscle) {
@@ -938,7 +972,7 @@ export function categoryForMuscle(muscle) {
 
 export const MUSCLES = [
   'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
-  'Legs', 'Glutes', 'Calves', 'Core', 'Cardio',
+  'Legs', 'Glutes', 'Calves', 'Core', 'Traps', 'Forearms', 'Cardio',
 ];
 
-export const EQUIPMENT = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'];
+export const EQUIPMENT = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight', 'Kettlebell', 'Bands', 'Other'];

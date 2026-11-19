@@ -4,9 +4,9 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 (tokens/keys are in the Claude memory file `project_supabase.md`; GitHub PAT: use `git credential fill` or ask the user).
 
 ## RESUME HERE
-- Current phase: **P3-P6 code DONE (all UNTESTED). Next: P7 exercise expansion, then BUILD and run the P8 loop.**
-- Last thing finished: P4 edit-session RIR/side; P5 queries (getExerciseSessionStats, avg_rir, hard_sets, e1RM) + exercise-detail (Est 1RM chart, compared-with-last-time, L vs R) + Progress Hard-sets toggle & avg RIR; P6 components/ExerciseForm.jsx (create+edit, category derived, unilateral switch, description, dup-name check) wired into Library (pencil+trash) and workout picker (Create new exercise). Reproduced on emulator (v1.1.0): adding DID save but with category "All" - the real-phone failure is unknown (maybe keyboard/signed-in sync) so TEST sync in P8.
-- Next action: P7 (scripts/build-exercises.js -> constants/exercises.generated.js, add Forearms/Traps muscles + colours, bump EXERCISE_SEED_VERSION, unilateral flags on existing 120), then build APK, install over 1.1.0 on emulator and start the P8 loop.
+- Current phase: **P2-P7 code ALL DONE (UNTESTED). Now: build 1.2.0 APK, install over 1.1.0 on emulator, run P8 test loop.**
+- Last thing finished: P7: scripts/build-exercises.js (deny-list+dedupe+caps) -> constants/exercises.generated.js (217) + 17 hand EXTRA + 16 flagged unilateral; library = 346 exercises, all described, 64 L/R; new muscles Traps/Forearms (+theme colours); EQUIPMENT += Kettlebell/Bands/Other; EXERCISE_SEED_VERSION=3. Version bumped to 1.2.0 (3 places).
+- Next action: build (gradlew assembleRelease), aapt check, install over 1.1.0 (adb install -r) and run the P8 checklist; log failures in FAILURES list; fix; rebuild; retest. See Test environment cheat sheet.
 - Last updated: 2026-11-19
 - NOTE: config changes take ~30-45 s to propagate on Supabase Auth.
 
@@ -123,7 +123,7 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 4. [ ] Confirm local persistence (SQLite) and cloud sync (check Supabase `exercises` rows with user_id) and restore after wiping app data.
 5. [ ] TEST: create exercise, use it in a workout, finish, wipe data, log in, exercise + workout history restored.
 
-### P7 - Exercise library expansion (research done, build it)  [ ]
+### P7 - Exercise library expansion  [x] code done, UNTESTED
 1. [ ] `scripts/build-exercises.js` (downloads dist/exercises.json to a temp dir, NOT committed; outputs `constants/exercises.generated.js`).
 2. [ ] Mapping: quadriceps/hamstrings/adductors -> Legs; abductors/glutes -> Glutes; lats/middle back/lower back -> Back; traps -> Traps (new);
        forearms -> Forearms (new); abdominals -> Core; neck -> skip; shoulders/chest/biceps/triceps/calves as is. Equipment: barbell/e-z curl bar -> Barbell,
@@ -136,7 +136,7 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 6. [ ] Add 'Forearms','Traps' to MUSCLES, `muscleColor`, library chips, picker chips (picker list is hard-coded in active-workout.jsx - derive from MUSCLES instead).
 7. [ ] Seed performance: transaction + `exercise_seed_version`.
 8. [ ] Target ~400-450 exercises total. Check bundle size and first-launch seed time on the emulator.
-9. [ ] Mention source/licence (Unlicense) in Settings > About.
+9. [ ] Mention source/licence (Unlicense) in Settings > About. (TODO in P8 fix list)
 
 ### P8 - FULL VIRTUAL-MACHINE TEST LOOP  [ ]   (USER REQUIREMENT 2026-11-19 - do this once P2-P7 are built)
 Rules from the user: run the emulator and test EVERYTHING added. If something does not work, DO NOT stop: write it in the

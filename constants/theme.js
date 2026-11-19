@@ -39,6 +39,8 @@ export const colors = {
   cardio:     '#38bdf8',
   calves:     '#2dd4bf',
   glutes:     '#c084fc',
+  traps:      '#a3e635',
+  forearms:   '#e5a06b',
 };
 
 export const spacing = {
@@ -83,6 +85,8 @@ export const muscleColor = (muscle) => {
     'Core': colors.core,
     'Cardio': colors.cardio,
     'Calves': colors.calves,
+    'Traps': colors.traps,
+    'Forearms': colors.forearms,
     'Full Body': colors.accent,
   };
   return map[muscle] || colors.accent;

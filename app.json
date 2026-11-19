@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gym Note",
     "slug": "mobileworkout",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "mobileworkout",
@@ -25,7 +25,7 @@
         "SCHEDULE_EXACT_ALARM",
         "VIBRATE"
       ],
-      "versionCode": 11
+      "versionCode": 12
     },
     "plugins": [
       "expo-router",
