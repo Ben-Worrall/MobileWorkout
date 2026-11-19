@@ -1,16 +1,22 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../utils/supabase';
+import { getSetting, setSetting } from '../utils/database';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [guest, setGuest] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
+    Promise.all([
+      supabase.auth.getSession().then(({ data: { session } }) => session?.user ?? null).catch(() => null),
+      getSetting('guest_mode', '0').catch(() => '0'),
+    ]).then(([u, g]) => {
+      setUser(u);
+      setGuest(g === '1');
+      setReady(true);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -19,6 +25,11 @@ export function AuthProvider({ children }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  async function continueAsGuest() {
+    await setSetting('guest_mode', '1');
+    setGuest(true);
+  }
 
   async function signUp(email, password) {
     const { data, error } = await supabase.auth.signUp({ email, password });
@@ -35,10 +46,12 @@ export function AuthProvider({ children }) {
   async function signOut() {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    await setSetting('guest_mode', '0');
+    setGuest(false);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, guest, ready, signIn, signUp, signOut, continueAsGuest }}>
       {children}
     </AuthContext.Provider>
   );

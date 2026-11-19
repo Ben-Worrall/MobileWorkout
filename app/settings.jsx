@@ -8,7 +8,7 @@ import * as IntentLauncher from 'expo-intent-launcher';
 import { APP_VERSION } from '../constants/version';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { uploadLocalData } from '../utils/sync';
+import { uploadLocalData, downloadCloudData } from '../utils/sync';
 import { getSetting, setSetting } from '../utils/database';
 
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/Ben-Worrall/MobileWorkout/releases/latest';
@@ -235,12 +235,13 @@ export default function Settings() {
               <View style={s.separator} />
               <SettingsRow
                 icon="cloud-upload-outline"
-                label="Sync local data"
+                label="Sync now"
                 iconColor={colors.success}
                 onPress={async () => {
                   try {
+                    await downloadCloudData();
                     await uploadLocalData();
-                    Alert.alert('Synced', 'Your workouts have been uploaded to your account.');
+                    Alert.alert('Synced', 'Your workouts are backed up to your account.');
                   } catch (e) {
                     Alert.alert('Sync failed', e.message);
                   }
@@ -263,6 +264,7 @@ export default function Settings() {
             <SettingsRow
               icon="log-in-outline"
               label="Sign In / Create Account"
+              value="Saved on this device only"
               iconColor={colors.accent}
               onPress={() => router.push('/auth')}
             />

@@ -10,7 +10,7 @@ import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
 import { BUILTIN_EXERCISES } from '../constants/exercises';
 import {
   getTemplate, getAllExercises, createSession, seedExercises,
-  logSet, deleteSet, finishSession, markScheduledComplete, uid, getSetting,
+  logSet, deleteSet, deleteSession, finishSession, markScheduledComplete, uid, getSetting,
 } from '../utils/database';
 
 const DEFAULT_REST = 90; // fallback if no setting saved
@@ -28,7 +28,7 @@ function formatSecs(s) {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-function ExerciseBlock({ exercise, sets, onTickSet, onUntickSet, onChangeTarget, lastSet }) {
+function ExerciseBlock({ exercise, sets, onTickSet, onUntickSet, onChangeTarget, onRemove, lastSet }) {
   const [drafts, setDrafts] = useState({});
   const mc = muscleColor(exercise.muscle);
   const target = exercise.target_sets || 3;
@@ -64,6 +64,9 @@ function ExerciseBlock({ exercise, sets, onTickSet, onUntickSet, onChangeTarget,
         {allDone
           ? <Ionicons name="checkmark-circle" size={22} color={colors.success} />
           : <View style={[s.muscleDot, { backgroundColor: mc }]} />}
+        <TouchableOpacity onPress={() => onRemove(exercise)} style={s.removeExBtn} hitSlop={8}>
+          <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
       </View>
 
       {Array.from({ length: target }, (_, i) => i + 1).map(n => {
@@ -263,6 +266,26 @@ export default function ActiveWorkout() {
       : e));
   }
 
+  function handleRemoveExercise(exercise) {
+    const exId = exercise.exercise_id || exercise.id;
+    const name = exercise.exercise_name || exercise.name;
+    const logged = loggedSets[exId] || [];
+    async function doRemove() {
+      for (const st of logged) await deleteSet(st.id);
+      setLoggedSets(prev => {
+        const next = { ...prev };
+        delete next[exId];
+        return next;
+      });
+      setExercises(prev => prev.filter(e => (e.exercise_id || e.id) !== exId));
+    }
+    if (logged.length === 0) { doRemove(); return; }
+    Alert.alert('Remove exercise?', `${name} and its ${logged.length} logged set${logged.length === 1 ? '' : 's'} will be removed from this workout.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: doRemove },
+    ]);
+  }
+
   async function handleAddSet(exercise, setNum, weight, reps) {
     if (!timerRunning) handleStartTimer();
     const setId = uid();
@@ -302,7 +325,7 @@ export default function ActiveWorkout() {
     const totalSets = Object.values(loggedSets).reduce((a, b) => a + b.length, 0);
     if (totalSets === 0) {
       Alert.alert('No sets logged', 'Log at least one set or discard this session.', [
-        { text: 'Discard', style: 'destructive', onPress: () => { clearInterval(timerRef.current); router.back(); } },
+        { text: 'Discard', style: 'destructive', onPress: async () => { clearInterval(timerRef.current); await deleteSession(sessionId); router.back(); } },
         { text: 'Keep going', style: 'cancel' },
       ]);
       return;
@@ -320,7 +343,7 @@ export default function ActiveWorkout() {
   function handleDiscard() {
     Alert.alert('Discard workout?', 'All logged sets will be lost.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: () => { clearInterval(timerRef.current); router.back(); } },
+      { text: 'Discard', style: 'destructive', onPress: async () => { clearInterval(timerRef.current); await deleteSession(sessionId); router.back(); } },
     ]);
   }
 
@@ -400,6 +423,7 @@ export default function ActiveWorkout() {
               onTickSet={handleAddSet}
               onUntickSet={handleDeleteSet}
               onChangeTarget={handleChangeTarget}
+              onRemove={handleRemoveExercise}
               lastSet={lastSets[ex.exercise_id || ex.id]}
             />
           ))}
@@ -543,6 +567,7 @@ const s = StyleSheet.create({
   setValue: { fontSize: font.base, fontWeight: '600', color: colors.text },
   setX: { fontSize: font.sm, color: colors.textMuted },
   setUnit: { fontSize: font.sm, color: colors.textMuted },
+  removeExBtn: { marginLeft: spacing.md, padding: 2 },
   struck: { textDecorationLine: 'line-through', color: colors.textMuted },
   inlineInput: { width: 64, backgroundColor: colors.bg3, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, color: colors.text, fontSize: font.base, fontWeight: '700', textAlign: 'center', paddingVertical: 6 },
   tickBtn: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },

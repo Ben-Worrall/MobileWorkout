@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { uploadLocalData } from '../utils/sync';
+import { uploadLocalData, downloadCloudData } from '../utils/sync';
 
 export default function AuthScreen() {
   const [tab, setTab] = useState('login'); // 'login' | 'signup'
@@ -16,7 +16,18 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, continueAsGuest, user, guest } = useAuth();
+  const isGate = !user && !guest;
+
+  function leave() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }
+
+  async function handleGuest() {
+    await continueAsGuest();
+    leave();
+  }
 
   async function handleSubmit() {
     const e = email.trim();
@@ -28,12 +39,26 @@ export default function AuthScreen() {
     try {
       if (tab === 'login') {
         await signIn(e, p);
-        router.back();
+        try {
+          await downloadCloudData();
+          await uploadLocalData();
+        } catch (syncErr) {
+          console.warn('[auth] sync after login failed:', syncErr.message);
+        }
+        leave();
       } else {
-        await signUp(e, p);
+        const data = await signUp(e, p);
+        if (!data.session) {
+          Alert.alert(
+            'Confirm your email',
+            'We sent a confirmation link to your email. Open it, then come back and log in.',
+          );
+          setTab('login');
+          return;
+        }
         await uploadLocalData();
-        Alert.alert('Account created!', 'Your local workouts have been synced to your account.', [
-          { text: 'OK', onPress: () => router.back() },
+        Alert.alert('Account created!', 'Your workouts are now backed up to your account.', [
+          { text: 'OK', onPress: leave },
         ]);
       }
     } catch (err) {
@@ -109,6 +134,18 @@ export default function AuthScreen() {
               <Text style={s.hint}>Your existing workouts will be synced to your new account.</Text>
             )}
           </View>
+
+          {isGate && (
+            <View style={s.guestBox}>
+              <TouchableOpacity style={s.guestBtn} onPress={handleGuest}>
+                <Text style={s.guestText}>Continue without an account</Text>
+              </TouchableOpacity>
+              <Text style={s.hint}>
+                Your workouts are saved on this device only. They stay when you update the app,
+                but are lost if you uninstall it. You can sign in later from Settings.
+              </Text>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -132,5 +169,8 @@ const s = StyleSheet.create({
   eyeBtn: { padding: spacing.md },
   submitBtn: { backgroundColor: colors.accent, borderRadius: radius.full, padding: spacing.md, alignItems: 'center', marginTop: spacing.sm },
   submitText: { color: colors.white, fontWeight: '700', fontSize: font.base },
+  guestBox: { gap: spacing.md, alignItems: 'center' },
+  guestBtn: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.full, paddingVertical: spacing.md, paddingHorizontal: spacing.xl, alignSelf: 'stretch', alignItems: 'center', backgroundColor: colors.bg2 },
+  guestText: { color: colors.text, fontWeight: '600', fontSize: font.base },
   hint: { textAlign: 'center', color: colors.textMuted, fontSize: font.sm, lineHeight: 18 },
 });

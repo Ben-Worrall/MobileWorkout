@@ -395,6 +395,58 @@ export async function getLastSessionPerMuscle() {
   `);
 }
 
+export async function getSessionSummaries(limit = 500) {
+  const db = await getDb();
+  return db.getAllAsync(`
+    SELECT ws.id, ws.name, ws.started_at, ws.finished_at, ws.notes,
+      COUNT(ls.id) as total_sets,
+      COALESCE(SUM(ls.weight * ls.reps), 0) as volume,
+      COUNT(DISTINCT ls.exercise_id) as exercises,
+      GROUP_CONCAT(DISTINCT e.muscle) as muscles
+    FROM workout_sessions ws
+    LEFT JOIN logged_sets ls ON ls.session_id = ws.id
+    LEFT JOIN exercises e ON e.id = ls.exercise_id
+    WHERE ws.finished_at IS NOT NULL
+    GROUP BY ws.id
+    ORDER BY ws.started_at DESC
+    LIMIT ?
+  `, [limit]);
+}
+
+// Per-muscle volume and set counts bucketed by week, for the overview chart.
+export async function getMuscleStatsByWeek(days = 90) {
+  const db = await getDb();
+  const since = Date.now() - days * 86400000;
+  return db.getAllAsync(`
+    SELECT e.muscle,
+      strftime('%Y-%W', ws.started_at / 1000, 'unixepoch') as week,
+      MIN(date(ws.started_at / 1000, 'unixepoch')) as week_start,
+      SUM(ls.weight * ls.reps) as volume,
+      COUNT(*) as sets
+    FROM logged_sets ls
+    JOIN exercises e ON e.id = ls.exercise_id
+    JOIN workout_sessions ws ON ws.id = ls.session_id
+    WHERE ws.started_at >= ? AND ws.finished_at IS NOT NULL
+    GROUP BY e.muscle, week
+    ORDER BY week ASC
+  `, [since]);
+}
+
+// Totals per muscle within an arbitrary time window (used to compare to the previous period).
+export async function getMuscleTotalsBetween(fromMs, toMs) {
+  const db = await getDb();
+  return db.getAllAsync(`
+    SELECT e.muscle,
+      SUM(ls.weight * ls.reps) as volume,
+      COUNT(*) as sets
+    FROM logged_sets ls
+    JOIN exercises e ON e.id = ls.exercise_id
+    JOIN workout_sessions ws ON ws.id = ls.session_id
+    WHERE ws.started_at >= ? AND ws.started_at < ? AND ws.finished_at IS NOT NULL
+    GROUP BY e.muscle
+  `, [fromMs, toMs]);
+}
+
 export async function getRecentSetsForExercise(exerciseId, limit = 10) {
   const db = await getDb();
   return db.getAllAsync(`
