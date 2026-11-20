@@ -2,21 +2,32 @@ import * as SQLite from 'expo-sqlite';
 import { syncRecord, syncDelete } from './sync';
 import { EXERCISE_SEED_VERSION } from '../constants/exercises';
 
-let db = null;
+let dbPromise = null;
 
-export async function getDb() {
-  if (!db) {
-    db = await SQLite.openDatabaseAsync('mobileworkout.db');
-    await initSchema(db);
-    await migrate(db);
+// Every caller awaits the SAME promise, so nobody can query before the schema and migrations have finished.
+export function getDb() {
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      const handle = await SQLite.openDatabaseAsync('mobileworkout.db');
+      await initSchema(handle);
+      await migrate(handle);
+      return handle;
+    })().catch(err => {
+      dbPromise = null;
+      throw err;
+    });
   }
-  return db;
+  return dbPromise;
 }
 
 async function addColumnIfMissing(db, table, column, definition) {
   const cols = await db.getAllAsync(`PRAGMA table_info(${table})`);
   if (!cols.some(c => c.name === column)) {
-    await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    try {
+      await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    } catch (e) {
+      if (!/duplicate column/i.test(String(e && e.message))) throw e;
+    }
   }
 }
 

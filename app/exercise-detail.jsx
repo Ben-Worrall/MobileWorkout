@@ -66,7 +66,7 @@ function SimpleChart({ data, color, valueKey = 'volume', height = 110 }) {
     <View style={{ height }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: height - 20, gap: 2 }}>
         {data.map((d, i) => {
-          const h = flat ? (height - 28) * 0.55 : Math.max(2, ((values[i] - min) / range) * (height - 28));
+          const h = Math.max(values[i] > 0 ? 4 : 2, (values[i] / (max || 1)) * (height - 28));
           return <View key={i} style={{ flex: 1, maxWidth: 40, height: h, backgroundColor: color, borderRadius: 2, opacity: 0.8 }} />;
         })}
       </View>
@@ -284,7 +284,7 @@ export default function ExerciseDetail() {
                 <View key={date} style={s.historyRow}>
                   <Text style={s.historyDate}>{date}</Text>
                   <View style={s.historyStats}>
-                    <Text style={s.historyStat}>{setCount} sets</Text>
+                    <Text style={s.historyStat}>{setCount} {setCount === 1 ? 'set' : 'sets'}</Text>
                     <Text style={s.historyStat}>{totalReps} reps</Text>
                     {avgRir != null && <Text style={s.historyStat}>RIR {fmt1(avgRir)}</Text>}
                     {maxW > 0 && <Text style={[s.historyStat, { color: mc, fontWeight: '700' }]}>{maxW} kg max</Text>}

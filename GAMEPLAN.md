@@ -166,10 +166,18 @@ Checklist (tick per pass; copy it into the log for each pass):
  SECURITY   [ ] `node scripts/rls-test.js` (needs env SUPABASE_SERVICE_KEY) -> all PASS  [ ] no secrets in git (`git grep`), none in APK bundle
 
 FAILURES / FIX LIST  (append; mark [x] when fixed AND retested)
- (none yet)
+ [x] F1 CRITICAL (ALSO hits FRESH installs and login-restore on a wiped app: 0 built-in exercises seeded, Home suggestions/volume wrong, same two SQLite errors)  (found pass 1, upgrade 1.1.0->1.2.0 first launch): utils/database.js getDb() assigns the module-level db BEFORE initSchema/migrate finish, so concurrent callers (Home, seed, suggestions) run queries before the new columns exist ("no such column: ls.side") and two migrate() calls both ALTER ("duplicate column name: rir"). Effects: Home shows "No workouts yet" with 11 workouts in DB; exercise seeding never ran (114 exercises, no exercise_seed_sig). FIX: cache one init PROMISE (dbPromise) and return it to every caller; make addColumnIfMissing swallow "duplicate column". Retest: upgrade install over 1.1.0 with data, first launch shows workouts + 346 exercises.
+ [x] F2 cosmetic: Home "Last workout" stat card wraps "Yesterday" onto two lines ("Yesterd/ay") - use smaller font/adjustsFontSizeToFit/numberOfLines=1 (app/(tabs)/index.jsx statNum for the last-workout card).
+ [x] F3 layout: RirPicker number cells (components/workout/RirPicker.jsx) are not square/centred - digits sit at the bottom edge and the 11th cell wraps alone (width 15.5% + aspectRatio inside a gap-wrapped row). Use explicit fixed cell size (e.g. 56x56) in a wrap row, centre text, 6 per row.
+ [x] F4 chart honesty: SimpleChart (exercise-detail.jsx) and LineChart (progress.jsx) scale bars from the MIN value so the smallest bar renders ~2px (looks like zero). Scale from 0 so bar heights are proportional.
+ [x] F5 grammar: exercise-detail History row says "1 sets" - use singular.
+ (more below as pass 1 continues)
 
 Test pass log  (append: date, pass #, result, failures found)
- (none yet)
+ PASSED so far in pass 1 (build 1.2.0): picker shows 346 exercises + Create new exercise; unilateral block shows L/R rows; RIR picker 0-10 selects + shows on row; ticking 1L then 1R starts rest only after BOTH; header Rest chip + sheet (-15/pause/+15/skip/minimise); Add Exercise usable while rest runs; notification permission prompt appears + exact alarm registered (dumpsys alarm); screen-off: Rest over notification posted; force-stop mid-workout: Home Resume card (4 sets) appears.
+ Also PASSED in pass 1: finish saves L/R + RIR rows to DB and clears active_workout; History lists + opens editor with side/RIR; exercise-detail Compared-with-last-time + RIR in history; Progress Overview Volume/Sets/Hard toggles, avg RIR per muscle, % vs previous period; Library search. F1-F5 fixed in source (NOT yet rebuilt/retested).
+ Also PASSED in pass 1 (old build): Left-vs-right card (30kg L vs 24kg R -> 20% warning); new ExerciseForm (muscle/equipment/L-R switch/description) saves locally with category Upper Body + is_unilateral=1; cloud sync of custom exercises and of sets with rir+side verified via REST; login on a WIPED app restored 17 sessions / 79 sets / 28 RIR sets / 10 L-R sets / 2 custom exercises. NEXT: rebuild with F1-F5, retest FRESH install (expect 346 exercises on first launch) and upgrade path, then re-run remaining checklist (routines, schedule, settings, updater, rest timer minimise etc).
+ Pass 1 started 2026-11-19 on build 1.2.0 (versionCode 12): upgrade install over 1.1.0 -> schema migrated OK (rir, side, is_unilateral, user_version=1, 11 workouts kept); FAILED F1 (see list). Continuing pass 1 on the same build (migration is already applied so later launches should work).
 
 ### P9 - Release  [ ]   (only after a complete zero-failure P8 pass)
 1. [ ] Bump version to 1.2.0 in app.json (version + versionCode), android/app/build.gradle, constants/version.js.

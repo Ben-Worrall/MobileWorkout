@@ -103,7 +103,7 @@ export default function HomeScreen() {
           </View>
           <View style={s.statCard}>
             <Ionicons name="time-outline" size={18} color={colors.purple} />
-            <Text style={s.statNum}>{lastSession ? daysAgoLabel(lastSession.started_at) : '—'}</Text>
+            <Text style={s.statNum} numberOfLines={1} adjustsFontSizeToFit>{lastSession ? daysAgoLabel(lastSession.started_at) : '—'}</Text>
             <Text style={s.statLabel}>Last workout</Text>
           </View>
         </View>

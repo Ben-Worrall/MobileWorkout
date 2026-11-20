@@ -43,7 +43,7 @@ function LineChart({ data, color, height = 120 }) {
       {/* Bars */}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: height - 20, gap: 2, paddingHorizontal: 2 }}>
         {data.map((d, i) => {
-          const h = flat ? (height - 28) * 0.55 : Math.max(2, ((d.value - min) / range) * (height - 28));
+          const h = Math.max(d.value > 0 ? 4 : 2, (d.value / (max || 1)) * (height - 28));
           return (
             <View
               key={i}
