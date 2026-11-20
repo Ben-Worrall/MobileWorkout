@@ -4,9 +4,9 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 (tokens/keys are in the Claude memory file `project_supabase.md`; GitHub PAT: use `git credential fill` or ask the user).
 
 ## RESUME HERE
-- Current phase: **P2-P7 code ALL DONE (UNTESTED). Now: build 1.2.0 APK, install over 1.1.0 on emulator, run P8 test loop.**
+- Current phase: **v1.2.0 PUBLISHED 2026-11-20 (user asked to stop testing and ship). Remaining: finish the P8 checklist items not yet tested (see Test pass log), rotate keys with the user.**
 - Last thing finished: P7: scripts/build-exercises.js (deny-list+dedupe+caps) -> constants/exercises.generated.js (217) + 17 hand EXTRA + 16 flagged unilateral; library = 346 exercises, all described, 64 L/R; new muscles Traps/Forearms (+theme colours); EQUIPMENT += Kettlebell/Bands/Other; EXERCISE_SEED_VERSION=3. Version bumped to 1.2.0 (3 places).
-- Next action: build (gradlew assembleRelease), aapt check, install over 1.1.0 (adb install -r) and run the P8 checklist; log failures in FAILURES list; fix; rebuild; retest. See Test environment cheat sheet.
+- Next action: (optional) retest on the published build: upgrade path from 1.1.0, in-app update 1.1.0->1.2.0, routines/schedule/settings, rest-timer force-stop resume, custom exercise edit/delete. Then scrub secrets from Claude memory once user rotates keys.
 - Last updated: 2026-11-19
 - NOTE: config changes take ~30-45 s to propagate on Supabase Auth.
 
