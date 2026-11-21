@@ -8,6 +8,7 @@ import * as IntentLauncher from 'expo-intent-launcher';
 import { APP_VERSION } from '../constants/version';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
+import { useUnit } from '../context/UnitContext';
 import { uploadLocalData, downloadCloudData } from '../utils/sync';
 import { getSetting, setSetting } from '../utils/database';
 
@@ -49,6 +50,7 @@ function SettingsRow({ icon, iconColor, label, value, onPress, rightEl }) {
 
 export default function Settings() {
   const { user, signOut } = useAuth();
+  const { unit, setUnit } = useUnit();
   const [checking, setChecking] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -221,6 +223,18 @@ export default function Settings() {
           </View>
         )}
 
+        {/* UNITS */}
+        <Text style={s.sectionLabel}>UNITS</Text>
+        <View style={s.section}>
+          <View style={s.unitRow}>
+            {[['kg', 'Kilograms (kg)'], ['lb', 'Pounds (lb)']].map(([u, label]) => (
+              <TouchableOpacity key={u} style={[s.unitBtn, unit === u && s.unitBtnOn]} onPress={() => setUnit(u)}>
+                <Text style={[s.unitText, unit === u && { color: colors.white }]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* ACCOUNT */}
         <Text style={s.sectionLabel}>ACCOUNT</Text>
         <View style={s.section}>
@@ -269,6 +283,18 @@ export default function Settings() {
               onPress={() => router.push('/auth')}
             />
           )}
+        </View>
+
+        {/* FRIENDS */}
+        <Text style={s.sectionLabel}>FRIENDS</Text>
+        <View style={s.section}>
+          <SettingsRow
+            icon="people-outline"
+            label="Friends & profile"
+            value={user ? '' : 'Sign in required'}
+            iconColor={colors.accent}
+            onPress={() => router.push('/friends')}
+          />
         </View>
 
         {/* ABOUT */}
@@ -350,6 +376,10 @@ const s = StyleSheet.create({
   progressBar: { height: 6, backgroundColor: colors.bg3, borderRadius: radius.full, overflow: 'hidden' },
   progressFill: { height: 6, backgroundColor: colors.success, borderRadius: radius.full },
   progressText: { fontSize: font.sm, color: colors.success, textAlign: 'center' },
+  unitRow: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md },
+  unitBtn: { flex: 1, paddingVertical: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg3, alignItems: 'center' },
+  unitBtnOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  unitText: { fontSize: font.base, fontWeight: '700', color: colors.textDim },
   pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   pickerSheet: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, paddingTop: spacing.sm, paddingBottom: spacing.xxl, paddingHorizontal: spacing.lg },
   pickerHandle: { width: 36, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: spacing.md },

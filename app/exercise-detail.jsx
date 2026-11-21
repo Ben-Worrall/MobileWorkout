@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
 import { getExerciseSessionStats, getRecentSetsForExercise, getPersonalRecords, getExercise } from '../utils/database';
+import { useUnit } from '../context/UnitContext';
 
 const fmt1 = v => (v == null ? '—' : (Math.round(v * 10) / 10).toString());
 
@@ -88,6 +89,7 @@ export default function ExerciseDetail() {
   const [exerciseData, setExerciseData] = useState(null);
 
   const mc = muscleColor(muscle);
+  const { unit, fmtW, toDisp } = useUnit();
 
   useFocusEffect(
     useCallback(() => {
@@ -169,11 +171,11 @@ export default function ExerciseDetail() {
         {/* Summary stats */}
         <View style={s.statsRow}>
           <View style={[s.statCard, pr && { borderTopColor: mc, borderTopWidth: 2 }]}>
-            <Text style={[s.statNum, { color: mc }]}>{pr ? `${pr.max_weight} kg` : '—'}</Text>
+            <Text style={[s.statNum, { color: mc }]}>{pr ? fmtW(pr.max_weight) : '—'}</Text>
             <Text style={s.statLabel}>Personal Record</Text>
           </View>
           <View style={s.statCard}>
-            <Text style={s.statNum}>{maxWeight > 0 ? `${maxWeight} kg` : '—'}</Text>
+            <Text style={s.statNum}>{maxWeight > 0 ? fmtW(maxWeight) : '—'}</Text>
             <Text style={s.statLabel}>Max ({period.label})</Text>
           </View>
           <View style={s.statCard}>
@@ -221,8 +223,8 @@ export default function ExerciseDetail() {
               <Text style={s.cardSub}>
                 {new Date(prev.started_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} → {new Date(cur.started_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
               </Text>
-              <CompareRow label="Top weight" prev={prev.top_weight} cur={cur.top_weight} unit=" kg" decimals={1} />
-              <CompareRow label="Est. 1RM" prev={prev.e1rm} cur={cur.e1rm} unit=" kg" decimals={1} />
+              <CompareRow label="Top weight" prev={toDisp(prev.top_weight)} cur={toDisp(cur.top_weight)} unit={` ${unit}`} decimals={1} />
+              <CompareRow label="Est. 1RM" prev={toDisp(prev.e1rm)} cur={toDisp(cur.e1rm)} unit={` ${unit}`} decimals={1} />
               <CompareRow label="Total reps" prev={prev.total_reps} cur={cur.total_reps} />
               <CompareRow label="Sets" prev={prev.sets} cur={cur.sets} />
               <CompareRow label="Avg reps in reserve" prev={prev.avg_rir} cur={cur.avg_rir} neutral decimals={1} />
@@ -251,12 +253,12 @@ export default function ExerciseDetail() {
             <View style={s.lrRow}>
               <View style={s.lrCol}>
                 <Text style={s.lrSide}>LEFT</Text>
-                <Text style={s.lrVal}>{fmt1(withSides.l_weight)} kg</Text>
+                <Text style={s.lrVal}>{fmt1(toDisp(withSides.l_weight))} {unit}</Text>
                 <Text style={s.lrSub}>{fmt1(withSides.l_reps)} reps avg</Text>
               </View>
               <View style={s.lrCol}>
                 <Text style={[s.lrSide, { color: colors.purple }]}>RIGHT</Text>
-                <Text style={s.lrVal}>{fmt1(withSides.r_weight)} kg</Text>
+                <Text style={s.lrVal}>{fmt1(toDisp(withSides.r_weight))} {unit}</Text>
                 <Text style={s.lrSub}>{fmt1(withSides.r_reps)} reps avg</Text>
               </View>
             </View>
@@ -287,7 +289,7 @@ export default function ExerciseDetail() {
                     <Text style={s.historyStat}>{setCount} {setCount === 1 ? 'set' : 'sets'}</Text>
                     <Text style={s.historyStat}>{totalReps} reps</Text>
                     {avgRir != null && <Text style={s.historyStat}>RIR {fmt1(avgRir)}</Text>}
-                    {maxW > 0 && <Text style={[s.historyStat, { color: mc, fontWeight: '700' }]}>{maxW} kg max</Text>}
+                    {maxW > 0 && <Text style={[s.historyStat, { color: mc, fontWeight: '700' }]}>{fmtW(maxW)} max</Text>}
                   </View>
                   <MiniBar
                     value={maxW}

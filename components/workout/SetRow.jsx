@@ -1,6 +1,7 @@
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font } from '../../constants/theme';
+import { useUnit } from '../../context/UnitContext';
 
 // One loggable line: [badge] kg x reps [RIR] [tick]. `done` is the logged set (if any).
 export default function SetRow({
@@ -8,6 +9,7 @@ export default function SetRow({
   onChangeWeight, onChangeReps, onOpenRir, onTick, onUntick,
 }) {
   const shownRir = done ? done.rir : rir;
+  const { fmtW, unit } = useUnit();
   return (
     <View style={[s.row, done && s.rowDone]}>
       <View style={[s.badge, accent && { backgroundColor: accent + '33' }]}>
@@ -16,7 +18,7 @@ export default function SetRow({
 
       {done ? (
         <View style={s.values}>
-          <Text style={[s.value, s.struck]}>{done.weight > 0 ? `${done.weight} kg` : 'BW'}</Text>
+          <Text style={[s.value, s.struck]}>{done.weight > 0 ? fmtW(done.weight) : 'BW'}</Text>
           <Text style={s.x}>×</Text>
           <Text style={[s.value, s.struck]}>{done.reps}</Text>
           {done.rir != null ? <Text style={s.rirDone}>@{done.rir}</Text> : null}
@@ -28,7 +30,7 @@ export default function SetRow({
             keyboardType="decimal-pad"
             value={weight}
             onChangeText={onChangeWeight}
-            placeholder="kg"
+            placeholder={unit}
             placeholderTextColor={colors.textMuted}
             selectTextOnFocus
           />

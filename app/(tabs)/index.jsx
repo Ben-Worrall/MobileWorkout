@@ -7,6 +7,7 @@ import { colors, spacing, radius, font, muscleColor } from '../../constants/them
 import { getSessions, getVolumeByMuscle, getScheduledWorkouts } from '../../utils/database';
 import { getSuggestions } from '../../utils/suggestions';
 import { loadActiveWorkout, startOrResumeWorkout } from '../../utils/activeWorkout';
+import { useUnit } from '../../context/UnitContext';
 
 function greeting() {
   const h = new Date().getHours();
@@ -48,6 +49,7 @@ export default function HomeScreen() {
   const [suggestions, setSuggestions] = useState([]);
   const [todayScheduled, setTodayScheduled] = useState(null);
   const [activeWorkout, setActiveWorkout] = useState(null);
+  const { fmtVol } = useUnit();
 
   useFocusEffect(
     useCallback(() => {
@@ -158,6 +160,16 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Friends */}
+        <TouchableOpacity style={s.friendsCard} onPress={() => router.push('/friends')}>
+          <View style={s.friendsIcon}><Ionicons name="people" size={18} color={colors.accent} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.friendsTitle}>Friends</Text>
+            <Text style={s.friendsSub}>Add friends and compare progress</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </TouchableOpacity>
+
         {/* Suggestions */}
         {suggestions.length > 0 && (
           <View style={s.section}>
@@ -186,9 +198,7 @@ export default function HomeScreen() {
                   <View style={[s.muscleDot, { backgroundColor: muscleColor(m.muscle) }]} />
                   <Text style={s.muscleName}>{m.muscle}</Text>
                   <Text style={s.muscleVol}>
-                    {(m.total_volume || 0) >= 1000
-                      ? `${Math.round((m.total_volume / 1000) * 10) / 10}k kg`
-                      : `${Math.round(m.total_volume || 0)} kg`}
+                    {fmtVol(m.total_volume || 0)}
                   </Text>
                   <Text style={s.muscleSets}>{m.total_sets} {m.total_sets === 1 ? 'set' : 'sets'}</Text>
                 </View>
@@ -274,6 +284,10 @@ const s = StyleSheet.create({
   resumeIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   resumeTitle: { fontSize: font.md, fontWeight: '700', color: colors.text },
   resumeSub: { fontSize: font.sm, color: colors.textDim, marginTop: 2 },
+  friendsCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, marginBottom: spacing.md },
+  friendsIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + '22', alignItems: 'center', justifyContent: 'center' },
+  friendsTitle: { fontSize: font.base, fontWeight: '700', color: colors.text },
+  friendsSub: { fontSize: font.sm, color: colors.textMuted, marginTop: 2 },
   quickStart: {
     backgroundColor: colors.bgCard, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border,

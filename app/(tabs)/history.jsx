@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../../constants/theme';
 import { getSessionSummaries } from '../../utils/database';
+import { useUnit } from '../../context/UnitContext';
 
 function formatDuration(ms) {
   if (!ms || ms < 60000) return ms ? '<1m' : '';
@@ -33,6 +34,7 @@ function monthKey(ts) {
 export default function HistoryScreen() {
   const [sessions, setSessions] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const { fmtVol } = useUnit();
 
   useFocusEffect(
     useCallback(() => {
@@ -84,7 +86,7 @@ export default function HistoryScreen() {
           renderItem={({ item }) => {
             const muscles = item.muscles ? item.muscles.split(',') : [];
             const duration = formatDuration(item.finished_at - item.started_at);
-            const vol = formatVolume(item.volume);
+            const vol = item.volume ? fmtVol(item.volume) : '';
             return (
               <TouchableOpacity
                 style={s.card}

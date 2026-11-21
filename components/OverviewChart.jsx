@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Dimensions, StyleSheet } from 'react-native';
 import Svg, { G, Line, Polyline, Circle, Text as SvgText } from 'react-native-svg';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
+import { useUnit } from '../context/UnitContext';
 
 const W = Dimensions.get('window').width - spacing.lg * 2 - spacing.md * 2 - 2;
 const H = 200;
@@ -12,14 +13,14 @@ const PAD_B = 24;
 
 const FIELD = { volume: 'volume', sets: 'sets', hard: 'hard_sets' };
 
-function fmt(v, metric) {
+function fmt(v, metric, fmtVol) {
   if (metric === 'sets' || metric === 'hard') return String(Math.round(v));
-  if (v >= 1000) return `${Math.round(v / 100) / 10}k`;
-  return String(Math.round(v));
+  return fmtVol(v, true);
 }
 
 export default function OverviewChart({ rows, metric }) {
   const [hidden, setHidden] = useState({});
+  const { fmtVol } = useUnit();
 
   const { weeks, series, order } = useMemo(() => {
     const weekMap = new Map();
@@ -85,7 +86,7 @@ export default function OverviewChart({ rows, metric }) {
             fill={colors.textMuted}
             textAnchor="end"
           >
-            {fmt(max * p, metric)}
+            {fmt(max * p, metric, fmtVol)}
           </SvgText>
         ))}
         {visible.map(m => {

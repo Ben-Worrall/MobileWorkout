@@ -6,6 +6,7 @@ import { colors } from '../constants/theme';
 import { getDb, seedExercises } from '../utils/database';
 import { BUILTIN_EXERCISES } from '../constants/exercises';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { UnitProvider } from '../context/UnitContext';
 
 function AuthGate() {
   const { user, guest, ready } = useAuth();
@@ -34,6 +35,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+    <UnitProvider>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
         <Stack.Screen name="(tabs)" />
@@ -63,6 +65,7 @@ export default function RootLayout() {
         />
       </Stack>
       <AuthGate />
+    </UnitProvider>
     </AuthProvider>
   );
 }

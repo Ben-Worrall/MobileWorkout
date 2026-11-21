@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
 import { getSession, updateSet, updateSession, deleteSet, logSet, uid } from '../utils/database';
 import RirPicker from '../components/workout/RirPicker';
+import { useUnit } from '../context/UnitContext';
 
 function formatDuration(ms) {
   if (!ms) return '';
@@ -18,14 +19,15 @@ function formatDuration(ms) {
 }
 
 function SetEditRow({ set, exerciseId, onUpdate, onDelete }) {
-  const [weight, setWeight] = useState(set.weight > 0 ? String(set.weight) : '');
+  const { inputStr, parseKg } = useUnit();
+  const [weight, setWeight] = useState(inputStr(set.weight));
   const [reps, setReps] = useState(String(set.reps));
   const [rir, setRir] = useState(set.rir == null ? null : set.rir);
   const [rirOpen, setRirOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   function handleSave() {
-    const w = parseFloat(weight) || 0;
+    const w = parseKg(weight);
     const r = parseInt(reps) || 0;
     if (!r) { Alert.alert('Enter reps'); return; }
     onUpdate(set.id, w, r, rir);
@@ -83,6 +85,7 @@ function SetEditRow({ set, exerciseId, onUpdate, onDelete }) {
 
 export default function EditSession() {
   const { sessionId } = useLocalSearchParams();
+  const { unit } = useUnit();
   const [session, setSession] = useState(null);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -220,7 +223,7 @@ export default function EditSession() {
               <Text style={s.exName}>{ex.name}</Text>
               <View style={s.setHeader}>
                 <Text style={[s.setHeaderText, { flex: 0, width: 32 }]}>#</Text>
-                <Text style={[s.setHeaderText, { flex: 1, textAlign: 'center' }]}>kg</Text>
+                <Text style={[s.setHeaderText, { flex: 1, textAlign: 'center' }]}>{unit}</Text>
                 <Text style={[s.setHeaderText, { flex: 1, textAlign: 'center' }]}>reps</Text>
                 <Text style={[s.setHeaderText, { width: 52, textAlign: 'center' }]}>RIR</Text>
                 <View style={{ width: 36 }} />

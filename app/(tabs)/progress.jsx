@@ -9,6 +9,7 @@ import {
   getMuscleStatsByWeek, getMuscleTotalsBetween,
 } from '../../utils/database';
 import OverviewChart from '../../components/OverviewChart';
+import { useUnit } from '../../context/UnitContext';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CHART_W = SCREEN_W - spacing.lg * 2 - 2;
@@ -63,13 +64,14 @@ function LineChart({ data, color, height = 120 }) {
 }
 
 function MuscleVolumeBar({ muscle, volume, maxVolume }) {
+  const { fmtVol } = useUnit();
   const pct = maxVolume > 0 ? (volume / maxVolume) : 0;
   const mc = muscleColor(muscle);
   return (
     <View style={{ marginBottom: spacing.sm }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
         <Text style={{ fontSize: font.sm, color: colors.text, fontWeight: '600' }}>{muscle}</Text>
-        <Text style={{ fontSize: font.sm, color: colors.textDim }}>{Math.round(volume / 1000 * 10) / 10}k kg</Text>
+        <Text style={{ fontSize: font.sm, color: colors.textDim }}>{fmtVol(volume)}</Text>
       </View>
       <View style={{ height: 6, backgroundColor: colors.bg3, borderRadius: radius.full }}>
         <View style={{ width: `${pct * 100}%`, height: 6, backgroundColor: mc, borderRadius: radius.full }} />
@@ -90,6 +92,7 @@ export default function ProgressScreen() {
   const [metric, setMetric] = useState('volume');
   const [weekStats, setWeekStats] = useState([]);
   const [prevTotals, setPrevTotals] = useState([]);
+  const { unit, fmtW, fmtVol } = useUnit();
 
   useFocusEffect(
     useCallback(() => {
@@ -152,7 +155,7 @@ export default function ProgressScreen() {
   function fmtMetric(v) {
     if (metric === 'sets') return `${Math.round(v)} sets`;
     if (metric === 'hard') return `${Math.round(v)} hard`;
-    return v >= 1000 ? `${Math.round(v / 100) / 10}k kg` : `${Math.round(v)} kg`;
+    return fmtVol(v);
   }
 
   return (
@@ -194,8 +197,8 @@ export default function ProgressScreen() {
             <Text style={s.statLabel}>Workouts</Text>
           </View>
           <View style={s.statCard}>
-            <Text style={s.statNum}>{Math.round(totalVol / 1000)}k</Text>
-            <Text style={s.statLabel}>Total kg</Text>
+            <Text style={s.statNum}>{fmtVol(totalVol, true)}</Text>
+            <Text style={s.statLabel}>Total {unit}</Text>
           </View>
           <View style={s.statCard}>
             <Text style={s.statNum}>{volumeByMuscle.length}</Text>
@@ -221,7 +224,7 @@ export default function ProgressScreen() {
                 </View>
               </View>
               <Text style={s.cardSubtitle}>
-                Weekly {metric === 'sets' ? 'sets' : metric === 'hard' ? 'hard sets (within 3 reps of failure)' : 'volume (kg)'} per muscle. Tap a name to hide it.
+                Weekly {metric === 'sets' ? 'sets' : metric === 'hard' ? 'hard sets (within 3 reps of failure)' : `volume (${unit})`} per muscle. Tap a name to hide it.
               </Text>
               <OverviewChart rows={weekStats} metric={metric} />
             </View>
@@ -304,7 +307,7 @@ export default function ProgressScreen() {
             <View style={s.prGrid}>
               {prs.map(pr => (
                 <View key={pr.exercise_id} style={[s.prCard, { borderTopColor: muscleColor(pr.muscle) }]}>
-                  <Text style={s.prWeight}>{pr.max_weight}<Text style={s.prUnit}> kg</Text></Text>
+                  <Text style={s.prWeight}>{fmtW(pr.max_weight, true)}<Text style={s.prUnit}> {unit}</Text></Text>
                   <Text style={s.prName} numberOfLines={2}>{pr.exercise_name}</Text>
                   <View style={[s.prMuscleTag, { backgroundColor: muscleColor(pr.muscle) + '22' }]}>
                     <Text style={[s.prMuscleText, { color: muscleColor(pr.muscle) }]}>{pr.muscle}</Text>

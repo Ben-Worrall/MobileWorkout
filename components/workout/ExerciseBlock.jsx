@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font, muscleColor } from '../../constants/theme';
 import SetRow from './SetRow';
+import { useUnit } from '../../context/UnitContext';
 
 const SIDES = ['L', 'R'];
 
@@ -21,6 +22,7 @@ export default function ExerciseBlock({
   exercise, sets, onTick, onUntick, onChangeTarget, onRemove, onToggleUnilateral, onOpenRir,
 }) {
   const [drafts, setDrafts] = useState({});
+  const { inputStr, parseKg } = useUnit();
   const mc = muscleColor(exercise.muscle);
   const target = exercise.target_sets || 3;
   const unilateral = !!exercise.unilateral;
@@ -42,7 +44,7 @@ export default function ExerciseBlock({
     const d = drafts[key(n, side)];
     if (d && d[field] !== undefined) return d[field];
     const p = previous(n, side);
-    if (field === 'weight') return p && p.weight ? String(p.weight) : '';
+    if (field === 'weight') return p && p.weight ? inputStr(p.weight) : '';
     if (field === 'reps') return p && p.reps ? String(p.reps) : defaultReps;
     return p && p.rir != null ? p.rir : null;
   }
@@ -52,7 +54,7 @@ export default function ExerciseBlock({
   }
 
   function tick(n, side) {
-    const weight = parseFloat(value(n, side, 'weight')) || 0;
+    const weight = parseKg(value(n, side, 'weight'));
     const reps = parseInt(value(n, side, 'reps'), 10) || 0;
     if (!reps) { Alert.alert('Enter reps'); return; }
     onTick(exercise, n, side, weight, reps, value(n, side, 'rir'));
