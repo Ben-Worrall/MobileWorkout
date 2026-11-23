@@ -3,6 +3,61 @@
 READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go. Never put secrets in this file
 (tokens/keys are in the Claude memory file `project_supabase.md`; GitHub PAT: use `git credential fill` or ask the user).
 
+## v1.3.1 POLISH REVIEW (2026-11-23, code read-through, no emulator)
+Status: code fixed + verified by PASS fresh schema has rir + side
+PASS user_version is 1
+PASS getDb returns one shared handle
+PASS seed inserts the whole library  [346]
+PASS second seed is a no-op
+PASS legacy install keeps rows before migration
+PASS routine saved with 2 exercises
+PASS editing a routine does not duplicate rows
+PASS editing keeps created_at / renames
+PASS old routine rows are deleted in the cloud (no pile-up)  [deletes=2]
+PASS deleting a routine used by past workouts works
+PASS past workout survives, link cleared
+PASS future scheduled entry removed, completed one kept
+PASS deleting a custom exercise used in a routine works
+PASS its routine link is gone, routine remains
+PASS weekly workouts counts workouts, not sets  [[{"week":"2026-W47","workouts":1}]]
+PASS personal records ignore the unfinished workout
+PASS session count helper
+PASS summaries report 10 sets
+PASS left+right counts as ONE set  [1]
+PASS upload skips the unfinished workout  [s1,s3]
+PASS upload skips sets of unfinished workouts (would break the batch)
+PASS upload order respects foreign keys  [workout_templates>workout_sessions>logged_sets>scheduled_workouts]
+PASS a failed upload is reported, not ignored  [logged_sets: boom]
+PASS restoring from the cloud does NOT delete local sets of a synced workout  [11 -> 11]
+PASS cloud values are merged in
+PASS different account clears the previous account's workouts
+PASS local-only data of the previous account was not uploaded to the new one
+PASS local-only set is gone after switching accounts
+PASS clearLocalUserData leaves built-in exercises
+PASS (diagnosis) old INSERT OR REPLACE really did delete the set via cascade
+PASS 100 kg shows as 220.5 lb
+PASS typing 135 lb stores 61.23 kg and shows 135 lb
+PASS kg round trip
+PASS empty weight parses to 0
+PASS rest remaining counts down
+PASS pause freezes the time
+PASS resume continues from the frozen value
+PASS +15s extends
+PASS workout timer pause keeps elapsed
+
+40 passed, 0 failed (40/40, real database/sync/units/timer code on Node's SQLite) and a static scan; build compiled; NOT yet published or run on a device. Publish as v1.3.1 when the user agrees.
+Fixed:
+- DATA LOSS: cloud restore used INSERT OR REPLACE, which cascade-deleted a workout's local sets (diagnosis reproduced). Now merges with ON CONFLICT ... DO UPDATE, inside a transaction.
+- Sync: upload ignored errors (said 'Synced' when it failed); sets of unfinished workouts broke the whole sets batch; cloud writes could arrive out of order (queue added); getUser() network call per write (now getSession()); big uploads chunked; fetch pages ordered.
+- Account switch: signing into a different account on the same device now clears the previous account's local data first (setting data_owner) instead of uploading it into the new account; sign-out backs up first.
+- Editing a routine left old rows in the cloud (duplicates on restore): now deleted. Routine save is one transaction.
+- Deleting a routine used by past workouts, or a custom exercise used in a routine, silently failed (foreign keys). Fixed + errors shown.
+- Routine editor still had the OLD exercise picker (collapsed list = 'search shows nothing', missing Traps/Forearms): now uses the shared ExercisePicker + Create new exercise.
+- Weekly workouts count was multiplied by sets; Progress workouts count capped at 200; personal records included unfinished workouts; Home 'today' used UTC date; finishing a scheduled workout never synced; resumed unknown exercise showed 'Exercise'; keep-for-later now pauses the clock; double-tap save guards; sync failure after login is now shown.
+- Performance: the whole workout screen re-rendered twice a second while a timer ran; timers now tick in small components (utils/useNow.js, WorkoutClock).
+- Cleanup: removed unused code/imports/exports, unused dependency react-native-gifted-charts, dead CI workflows (build.yml ran on every push and failed), declared expo-file-system, website text updated, lb input rounding.
+Known limitations (not changed): fire-and-forget sync means edits made while offline reach the cloud only at the next Sync now/login; deleted-while-offline items can reappear on restore; History shows the latest 500 workouts; dates in charts are UTC.
+
 ## v1.3.0 WORK (friends + profiles + lb/kg)  <-- READ THIS FIRST, it is the current job
 ### RESUME HERE (v1.3.0)
 - Current step: **v1.3.0 PUBLISHED 2026-11-21 (friends + lb/kg). Tested on emulator: unique usernames, not-found message, pending request gives NO access until accepted, accepted friend progress page, lb conversion. NOT tested: rejecting/unfriending via UI, share toggle off via UI, typing lb into a workout and saving, reps of Home friends card.**

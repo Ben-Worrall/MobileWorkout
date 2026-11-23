@@ -25,6 +25,7 @@ import ExercisePicker from '../components/workout/ExercisePicker';
 import RirPicker from '../components/workout/RirPicker';
 import ExerciseForm from '../components/ExerciseForm';
 import { RestChip, RestSheet } from '../components/workout/RestTimer';
+import WorkoutClock from '../components/workout/WorkoutClock';
 
 const DEFAULT_REST = 90;
 const exId = e => e.exercise_id || e.id;
@@ -40,7 +41,6 @@ export default function ActiveWorkout() {
   const [loggedSets, setLoggedSets] = useState({});
   const [timer, setTimer] = useState(T.newWorkoutTimer());
   const [rest, setRest] = useState(null);
-  const [now, setNow] = useState(Date.now());
   const [showRestSheet, setShowRestSheet] = useState(false);
   const [restDuration, setRestDuration] = useState(DEFAULT_REST);
   const [pickingExercise, setPickingExercise] = useState(false);
@@ -49,6 +49,7 @@ export default function ActiveWorkout() {
   const [rirTarget, setRirTarget] = useState(null);
   const [finishing, setFinishing] = useState(false);
   const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
   const lastRestExercise = useRef('');
 
   // ── startup: new workout or resume ───────────────────────────────
@@ -94,7 +95,7 @@ export default function ActiveWorkout() {
     const byEx = {};
     for (const st of (session && session.sets) || []) {
       (byEx[st.exercise_id] = byEx[st.exercise_id] || []).push({
-        id: st.id, set_number: st.set_number, weight: st.weight, reps: st.reps, rir: st.rir, side: st.side,
+        id: st.id, exercise_name: st.exercise_name, set_number: st.set_number, weight: st.weight, reps: st.reps, rir: st.rir, side: st.side,
       });
     }
     const list = [...(saved.exercises || [])];
@@ -104,7 +105,7 @@ export default function ActiveWorkout() {
       const sets = byEx[id];
       list.push({
         exercise_id: id,
-        exercise_name: info ? info.name : sets[0] ? 'Exercise' : 'Exercise',
+        exercise_name: info ? info.name : sets[0].exercise_name || 'Exercise',
         muscle: info ? info.muscle : null,
         equipment: info ? info.equipment : null,
         target_sets: Math.max(3, ...sets.map(x => x.set_number)),
@@ -122,7 +123,6 @@ export default function ActiveWorkout() {
       setRest(saved.rest);
       if (saved.rest.pausedRemaining == null) scheduleRestEnd(saved.rest.endAt, '');
     }
-    setNow(Date.now());
     setReady(true);
   }
 
@@ -132,45 +132,38 @@ export default function ActiveWorkout() {
     saveActiveWorkout({ sessionId, name: sessionName, templateId: templateId || null, scheduledId, exercises, timer, rest });
   }, [ready, sessionId, sessionName, scheduledId, exercises, timer, rest]);
 
-  // ── clock: one interval, only while something is running ─────────
-  const needsTick = timer.running || (rest && T.restIsRunning(rest));
+  // Ends the rest when its time is up. (A scheduled notification covers the case where the app is in the background.)
   useEffect(() => {
-    if (!needsTick) return;
-    const id = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(id);
-  }, [needsTick]);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', st => { if (st === 'active') setNow(Date.now()); });
-    return () => sub.remove();
-  }, []);
-
-  useEffect(() => {
-    if (rest && T.restIsRunning(rest) && T.restRemaining(rest, now) === 0) {
+    if (!rest || !T.restIsRunning(rest)) return undefined;
+    const finish = () => {
       setRest(null);
       setShowRestSheet(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    }
-  }, [now, rest]);
+    };
+    const ms = rest.endAt - Date.now();
+    if (ms <= 0) { finish(); return undefined; }
+    const timeout = setTimeout(finish, ms);
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active' && Date.now() >= rest.endAt) { clearTimeout(timeout); finish(); }
+    });
+    return () => { clearTimeout(timeout); sub.remove(); };
+  }, [rest]);
 
   // ── timers ───────────────────────────────────────────────────────
   function toggleWorkoutTimer() {
     setTimer(t => (t.running ? T.pauseWorkoutTimer(t) : T.startWorkoutTimer(t)));
-    setNow(Date.now());
   }
 
   async function beginRest(exerciseName) {
     lastRestExercise.current = exerciseName || '';
     const next = T.startRest(restDuration);
     setRest(next);
-    setNow(Date.now());
     if (await ensureNotificationPermission()) scheduleRestEnd(next.endAt, exerciseName);
   }
 
   function adjustRest(delta) {
     const next = T.adjustRest(rest, delta);
     setRest(next);
-    setNow(Date.now());
     if (next && T.restIsRunning(next)) scheduleRestEnd(next.endAt, lastRestExercise.current);
   }
 
@@ -184,7 +177,6 @@ export default function ActiveWorkout() {
       setRest(next);
       scheduleRestEnd(next.endAt, lastRestExercise.current);
     }
-    setNow(Date.now());
   }
 
   function skipRest() {
@@ -261,10 +253,17 @@ export default function ActiveWorkout() {
   // ── leaving / finishing ──────────────────────────────────────────
   const totalRows = Object.values(loggedSets).reduce((a, b) => a + b.length, 0);
 
+  // Leaving without finishing: pause the clock (so time away is not counted) and keep the workout for later.
+  async function keepForLater() {
+    const paused = T.pauseWorkoutTimer(timer);
+    await saveActiveWorkout({ sessionId, name: sessionName, templateId: templateId || null, scheduledId, exercises, timer: paused, rest });
+    router.back();
+  }
+
   function handleClose() {
     Alert.alert('Leave workout?', 'You can come back to it later from the Home screen, or discard it.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Keep for later', onPress: () => router.back() },
+      { text: 'Keep for later', onPress: keepForLater },
       { text: 'Discard', style: 'destructive', onPress: discard },
     ]);
   }
@@ -287,6 +286,8 @@ export default function ActiveWorkout() {
   }
 
   async function confirmFinish() {
+    if (saving) return;
+    setSaving(true);
     await finishSession(sessionId, notes);
     if (scheduledId) await markScheduledComplete(scheduledId, sessionId);
     await cancelRestNotification();
@@ -295,7 +296,7 @@ export default function ActiveWorkout() {
   }
 
   // ── derived values ───────────────────────────────────────────────
-  const elapsed = T.workoutElapsed(timer, now);
+  const elapsed = T.workoutElapsed(timer);
   const setsDone = exercises.reduce(
     (a, e) => a + completedSetCount(loggedSets[exId(e)] || [], e.target_sets || 3, !!e.unilateral), 0
   );
@@ -320,17 +321,8 @@ export default function ActiveWorkout() {
           <View style={s.headerCenter}>
             <Text style={s.headerTitle} numberOfLines={1}>{sessionName}</Text>
             <View style={s.timerRow}>
-              <TouchableOpacity onPress={toggleWorkoutTimer} style={s.timerBtn} accessibilityLabel="Start or pause workout timer">
-                <Ionicons
-                  name={timer.running ? 'pause-circle' : 'play-circle'}
-                  size={16}
-                  color={timer.running ? colors.accent : colors.textMuted}
-                />
-                <Text style={[s.timer, { color: timer.running ? colors.accent : colors.textMuted }]}>
-                  {T.formatClock(elapsed)}
-                </Text>
-              </TouchableOpacity>
-              <RestChip rest={rest} now={now} onPress={() => setShowRestSheet(true)} />
+              <WorkoutClock timer={timer} onToggle={toggleWorkoutTimer} />
+              <RestChip rest={rest} onPress={() => setShowRestSheet(true)} />
             </View>
           </View>
           <TouchableOpacity onPress={handleFinish} style={[s.headerSide, { alignItems: 'flex-end' }]}>
@@ -393,7 +385,6 @@ export default function ActiveWorkout() {
         <RestSheet
           visible={showRestSheet}
           rest={rest}
-          now={now}
           onClose={() => setShowRestSheet(false)}
           onAdjust={adjustRest}
           onToggle={toggleRest}
@@ -481,8 +472,6 @@ const s = StyleSheet.create({
   headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: { fontSize: font.base, fontWeight: '700', color: colors.text },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 3 },
-  timerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  timer: { fontSize: font.sm, fontWeight: '600' },
   finishText: { color: colors.accent, fontWeight: '700', fontSize: font.base },
   statsBar: { flexDirection: 'row', backgroundColor: colors.bg2, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },
   statItem: { flex: 1, alignItems: 'center', gap: 2 },

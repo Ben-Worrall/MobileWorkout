@@ -1,86 +1,85 @@
 import { supabase } from './supabase';
-import { getDb } from './database';
+import { getDb, getSetting, setSetting, seedExercises, clearLocalUserData } from './database';
+import { BUILTIN_EXERCISES } from '../constants/exercises';
 
-// Upload all local SQLite data to Supabase under the current user.
-// Called once after sign-up or first sign-in on a new device.
+// All cloud writes go through one queue so they reach the server in the order they were made
+// (a routine must exist in the cloud before its exercises, a set after its workout, a delete after its last edit).
+let queue = Promise.resolve();
+function enqueue(task) {
+  queue = queue.then(task).catch(err => console.warn('[sync]', err && err.message ? err.message : err));
+  return queue;
+}
+
+// Reads the saved session from device storage; unlike getUser() this needs no network round trip.
+async function currentUserId() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session && session.user ? session.user.id : null;
+}
+
+// Sync a single record to Supabase. Fire-and-forget: never blocks the UI, silently skipped when signed out.
+export function syncRecord(table, record) {
+  enqueue(async () => {
+    const uid = await currentUserId();
+    if (!uid) return;
+    const { error } = await supabase.from(table).upsert({ ...record, user_id: uid }, { onConflict: 'id' });
+    if (error) console.warn(`[sync] ${table}:`, error.message);
+  });
+}
+
+export function syncDelete(table, id) {
+  enqueue(async () => {
+    const uid = await currentUserId();
+    if (!uid) return;
+    const { error } = await supabase.from(table).delete().eq('id', id).eq('user_id', uid);
+    if (error) console.warn(`[sync] delete ${table}:`, error.message);
+  });
+}
+
+async function upsertChunked(table, rows) {
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await supabase.from(table).upsert(rows.slice(i, i + 500), { onConflict: 'id' });
+    if (error) throw new Error(`${table}: ${error.message}`);
+  }
+}
+
+// Push everything stored on this device to the signed-in account. Throws if any part fails.
 export async function uploadLocalData() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  const uid = await currentUserId();
+  if (!uid) return;
+  await queue; // let pending single-record writes land first
 
   const db = await getDb();
+  const mine = rows => rows.map(r => ({ ...r, user_id: uid }));
 
-  // Custom exercises
-  const customExercises = await db.getAllAsync('SELECT * FROM exercises WHERE is_custom = 1');
-  if (customExercises.length) {
-    await supabase.from('exercises').upsert(
-      customExercises.map(e => ({ ...e, user_id: user.id })),
-      { onConflict: 'id' }
-    );
-  }
-
-  // Templates
-  const templates = await db.getAllAsync('SELECT * FROM workout_templates');
-  if (templates.length) {
-    await supabase.from('workout_templates').upsert(
-      templates.map(t => ({ ...t, user_id: user.id })),
-      { onConflict: 'id' }
-    );
-  }
-
-  // Template exercises
-  const templateExercises = await db.getAllAsync('SELECT * FROM template_exercises');
-  if (templateExercises.length) {
-    await supabase.from('template_exercises').upsert(
-      templateExercises.map(t => ({ ...t, user_id: user.id })),
-      { onConflict: 'id' }
-    );
-  }
-
-  // Sessions
-  const sessions = await db.getAllAsync('SELECT * FROM workout_sessions WHERE finished_at IS NOT NULL');
-  if (sessions.length) {
-    await supabase.from('workout_sessions').upsert(
-      sessions.map(s => ({ ...s, user_id: user.id })),
-      { onConflict: 'id' }
-    );
-  }
-
-  // Logged sets
-  const sets = await db.getAllAsync('SELECT * FROM logged_sets');
-  if (sets.length) {
-    await supabase.from('logged_sets').upsert(
-      sets.map(s => ({ ...s, user_id: user.id })),
-      { onConflict: 'id' }
-    );
-  }
-
-  // Scheduled workouts
-  const scheduled = await db.getAllAsync('SELECT * FROM scheduled_workouts');
-  if (scheduled.length) {
-    await supabase.from('scheduled_workouts').upsert(
-      scheduled.map(s => ({ ...s, user_id: user.id })),
-      { onConflict: 'id' }
-    );
-  }
+  await upsertChunked('exercises', mine(await db.getAllAsync('SELECT * FROM exercises WHERE is_custom = 1')));
+  await upsertChunked('workout_templates', mine(await db.getAllAsync('SELECT * FROM workout_templates')));
+  await upsertChunked('template_exercises', mine(await db.getAllAsync('SELECT * FROM template_exercises')));
+  await upsertChunked('workout_sessions', mine(await db.getAllAsync('SELECT * FROM workout_sessions WHERE finished_at IS NOT NULL')));
+  // Only sets of uploaded (finished) workouts: a set whose workout is missing in the cloud would fail the whole batch.
+  await upsertChunked('logged_sets', mine(await db.getAllAsync(
+    'SELECT ls.* FROM logged_sets ls JOIN workout_sessions ws ON ws.id = ls.session_id WHERE ws.finished_at IS NOT NULL'
+  )));
+  await upsertChunked('scheduled_workouts', mine(await db.getAllAsync('SELECT * FROM scheduled_workouts')));
 }
 
 async function fetchAll(table) {
   const rows = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from(table).select('*').range(from, from + 999);
-    if (error) throw error;
+    const { data, error } = await supabase.from(table).select('*').order('id').range(from, from + 999);
+    if (error) throw new Error(`${table}: ${error.message}`);
     rows.push(...data);
     if (data.length < 1000) break;
   }
   return rows;
 }
 
-// Restore everything stored in the signed-in user's cloud account into local SQLite.
-// Order matters because of foreign keys. Existing local rows with the same id are overwritten.
+// Copy the signed-in account's cloud data onto this device. Rows are merged by id (updated in place, never
+// delete-and-reinsert, so nothing that is stored locally gets removed along the way).
 export async function downloadCloudData() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { restored: 0 };
+  const uid = await currentUserId();
+  if (!uid) return { restored: 0 };
 
+  await seedExercises(BUILTIN_EXERCISES); // routines point at built-in exercises, which must exist first
   const db = await getDb();
   const plan = [
     ['exercises', ['id', 'name', 'muscle', 'category', 'equipment', 'is_custom', 'notes', 'is_unilateral', 'created_at'], r => r.is_custom === 1],
@@ -91,37 +90,38 @@ export async function downloadCloudData() {
     ['scheduled_workouts', ['id', 'template_id', 'date', 'completed', 'session_id', 'notes']],
   ];
 
-  let restored = 0;
+  const fetched = [];
   for (const [table, cols, keep] of plan) {
-    const rows = (await fetchAll(table)).filter(r => (keep ? keep(r) : true));
-    const sql = `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`;
-    for (const r of rows) {
-      try {
-        await db.runAsync(sql, cols.map(c => (r[c] === undefined ? null : r[c])));
-        restored++;
-      } catch (e) {
-        console.warn(`[sync] restore ${table} ${r.id}:`, e.message);
+    fetched.push([table, cols, (await fetchAll(table)).filter(r => (keep ? keep(r) : true))]);
+  }
+
+  let restored = 0;
+  await db.withTransactionAsync(async () => {
+    for (const [table, cols, rows] of fetched) {
+      const updates = cols.filter(c => c !== 'id').map(c => `${c} = excluded.${c}`).join(', ');
+      const sql = `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) ON CONFLICT(id) DO UPDATE SET ${updates}`;
+      for (const r of rows) {
+        try {
+          await db.runAsync(sql, cols.map(c => (r[c] === undefined ? null : r[c])));
+          restored++;
+        } catch (e) {
+          console.warn(`[sync] restore ${table} ${r.id}:`, e.message);
+        }
       }
     }
-  }
+  });
   return { restored };
 }
 
-// Sync a single record to Supabase. Fire-and-forget — never blocks UI.
-export function syncRecord(table, record) {
-  supabase.auth.getUser().then(({ data: { user } }) => {
-    if (!user) return;
-    supabase.from(table).upsert({ ...record, user_id: user.id }, { onConflict: 'id' }).then(({ error }) => {
-      if (error) console.warn(`[sync] ${table}:`, error.message);
-    });
-  });
-}
-
-export function syncDelete(table, id) {
-  supabase.auth.getUser().then(({ data: { user } }) => {
-    if (!user) return;
-    supabase.from(table).delete().eq('id', id).eq('user_id', user.id).then(({ error }) => {
-      if (error) console.warn(`[sync] delete ${table}:`, error.message);
-    });
-  });
+// Run after every login / sign-up / "Sync now".
+//  - Data left by a DIFFERENT account on this device is cleared first, so it can never leak into this account.
+//  - Local data is pushed before the cloud copy is pulled, so unsynced local changes are never overwritten.
+export async function syncAfterLogin() {
+  const uid = await currentUserId();
+  if (!uid) return;
+  const owner = await getSetting('data_owner', null);
+  if (owner && owner !== uid) await clearLocalUserData();
+  await uploadLocalData();
+  await downloadCloudData();
+  await setSetting('data_owner', uid);
 }

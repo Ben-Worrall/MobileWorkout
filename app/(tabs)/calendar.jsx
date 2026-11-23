@@ -65,7 +65,6 @@ export default function CalendarScreen() {
   }
 
   async function addWorkoutToDay(templateId) {
-    const tmpl = templates.find(t => t.id === templateId);
     await scheduleWorkout({ id: uid(), templateId, date: selectedDate, notes: null });
     setPickingTemplate(false);
     load();

@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  TextInput, Modal, FlatList, Alert,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
-import { getAllExercises, getTemplate, saveTemplate, seedExercises, uid } from '../utils/database';
+import { getAllExercises, getTemplate, saveTemplate, seedExercises, getExercise, uid } from '../utils/database';
 import { BUILTIN_EXERCISES } from '../constants/exercises';
+import ExercisePicker from '../components/workout/ExercisePicker';
+import ExerciseForm from '../components/ExerciseForm';
 
 const TEMPLATE_COLORS = ['#4d9fff', '#f87171', '#34d399', '#a78bfa', '#fbbf24', '#fb923c', '#38bdf8', '#f472b6'];
 
@@ -21,9 +20,9 @@ export default function CreateTemplate() {
   const [color, setColor] = useState(TEMPLATE_COLORS[0]);
   const [exercises, setExercises] = useState([]); // { exercise_id, exercise_name, muscle, default_sets, default_reps }
   const [pickingExercise, setPickingExercise] = useState(false);
+  const [creatingExercise, setCreatingExercise] = useState(false);
   const [allExercises, setAllExercises] = useState([]);
-  const [exSearch, setExSearch] = useState('');
-  const [exMuscleFilter, setExMuscleFilter] = useState('All');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isEditing) loadTemplate();
@@ -64,7 +63,6 @@ export default function CreateTemplate() {
       }]);
     }
     setPickingExercise(false);
-    setExSearch('');
   }
 
   function removeExercise(exerciseId) {
@@ -88,23 +86,24 @@ export default function CreateTemplate() {
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!name.trim()) { Alert.alert('Name required'); return; }
     if (exercises.length === 0) { Alert.alert('Add at least one exercise'); return; }
-    await saveTemplate({
-      id: isEditing ? templateId : uid(),
-      name: name.trim(),
-      description: description.trim() || null,
-      color,
-      exercises,
-    });
-    router.back();
+    setSaving(true);
+    try {
+      await saveTemplate({
+        id: isEditing ? templateId : uid(),
+        name: name.trim(),
+        description: description.trim() || null,
+        color,
+        exercises,
+      });
+      router.back();
+    } catch (e) {
+      setSaving(false);
+      Alert.alert('Could not save', e.message);
+    }
   }
-
-  const filteredAll = allExercises.filter(e => {
-    const matchMuscle = exMuscleFilter === 'All' || e.muscle === exMuscleFilter;
-    const matchSearch = !exSearch || e.name.toLowerCase().includes(exSearch.toLowerCase());
-    return matchMuscle && matchSearch;
-  });
 
   return (
     <SafeAreaView style={s.safe}>
@@ -220,65 +219,25 @@ export default function CreateTemplate() {
         </View>
       </ScrollView>
 
-      {/* Exercise picker modal */}
-      <Modal visible={pickingExercise} transparent animationType="slide" onRequestClose={() => setPickingExercise(false)}>
-        <View style={s.overlay}>
-          <View style={s.modal}>
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Add Exercise</Text>
-              <TouchableOpacity onPress={() => setPickingExercise(false)}>
-                <Ionicons name="close" size={22} color={colors.textDim} />
-              </TouchableOpacity>
-            </View>
-            <View style={s.modalSearch}>
-              <Ionicons name="search" size={16} color={colors.textMuted} />
-              <TextInput
-                style={s.modalSearchInput}
-                placeholder="Search..."
-                placeholderTextColor={colors.textMuted}
-                value={exSearch}
-                onChangeText={setExSearch}
-                autoFocus
-              />
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, flexDirection: 'row', paddingVertical: spacing.sm, paddingHorizontal: spacing.xs }}>
-              {['All', 'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Glutes', 'Core', 'Cardio', 'Calves'].map(m => (
-                <TouchableOpacity
-                  key={m}
-                  style={[s.chip, exMuscleFilter === m && { backgroundColor: m === 'All' ? colors.accent : muscleColor(m), borderColor: 'transparent' }]}
-                  onPress={() => setExMuscleFilter(m)}
-                >
-                  <Text style={[s.chipText, exMuscleFilter === m && { color: colors.white }]}>{m}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <FlatList
-              data={filteredAll}
-              keyExtractor={i => i.id}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => {
-                const mc = muscleColor(item.muscle);
-                const added = exercises.some(e => e.exercise_id === item.id);
-                return (
-                  <TouchableOpacity
-                    style={[s.pickItem, added && { opacity: 0.45 }]}
-                    onPress={() => handlePickExercise(item)}
-                    disabled={added}
-                  >
-                    <View style={[s.pickDot, { backgroundColor: mc }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.pickName}>{item.name}</Text>
-                      <Text style={s.pickMeta}>{item.muscle} · {item.equipment}</Text>
-                    </View>
-                    {added && <Text style={s.addedTag}>Added</Text>}
-                  </TouchableOpacity>
-                );
-              }}
-              style={{ flex: 1 }}
-            />
-          </View>
-        </View>
-      </Modal>
+      <ExercisePicker
+        visible={pickingExercise}
+        exercises={allExercises}
+        addedIds={new Set(exercises.map(e => e.exercise_id))}
+        onPick={handlePickExercise}
+        onClose={() => setPickingExercise(false)}
+        onCreate={() => { setPickingExercise(false); setTimeout(() => setCreatingExercise(true), 250); }}
+      />
+
+      <ExerciseForm
+        visible={creatingExercise}
+        exercise={null}
+        onClose={() => setCreatingExercise(false)}
+        onSaved={async saved => {
+          setCreatingExercise(false);
+          const row = await getExercise(saved.id);
+          if (row) handlePickExercise(row);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -312,17 +271,4 @@ const s = StyleSheet.create({
   exDel: { padding: spacing.xs },
   addExBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, justifyContent: 'center', backgroundColor: colors.bgCard, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.accent + '44', borderStyle: 'dashed', padding: spacing.md },
   addExText: { color: colors.accent, fontWeight: '600', fontSize: font.base },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: colors.bg2, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: '80%', padding: spacing.lg },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  modalTitle: { fontSize: font.lg, fontWeight: '700', color: colors.text },
-  modalSearch: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.bg3, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.md, height: 40, marginBottom: spacing.xs },
-  modalSearchInput: { flex: 1, color: colors.text, fontSize: font.base },
-  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg2 },
-  chipText: { fontSize: font.sm, fontWeight: '600', color: colors.textDim },
-  pickItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderDim },
-  pickDot: { width: 10, height: 10, borderRadius: 5 },
-  pickName: { fontSize: font.base, fontWeight: '600', color: colors.text },
-  pickMeta: { fontSize: font.sm, color: colors.textMuted, marginTop: 2 },
-  addedTag: { fontSize: font.xs, color: colors.textMuted, fontStyle: 'italic' },
 });

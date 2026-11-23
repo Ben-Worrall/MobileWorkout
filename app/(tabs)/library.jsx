@@ -125,14 +125,14 @@ export default function LibraryScreen() {
   async function handleDeleteExercise(ex) {
     Alert.alert('Delete', `Delete "${ex.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteCustomExercise(ex.id); load(); } },
+      { text: 'Delete', style: 'destructive', onPress: async () => { try { await deleteCustomExercise(ex.id); } catch (e) { Alert.alert('Could not delete', e.message); } load(); } },
     ]);
   }
 
   async function handleDeleteTemplate(tmpl) {
     Alert.alert('Delete', `Delete "${tmpl.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteTemplate(tmpl.id); load(); } },
+      { text: 'Delete', style: 'destructive', onPress: async () => { try { await deleteTemplate(tmpl.id); } catch (e) { Alert.alert('Could not delete', e.message); } load(); } },
     ]);
   }
 

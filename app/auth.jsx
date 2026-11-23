@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
-import { uploadLocalData, downloadCloudData } from '../utils/sync';
+import { syncAfterLogin } from '../utils/sync';
 
 export default function AuthScreen() {
   const [tab, setTab] = useState('login'); // 'login' | 'signup'
@@ -40,10 +40,10 @@ export default function AuthScreen() {
       if (tab === 'login') {
         await signIn(e, p);
         try {
-          await downloadCloudData();
-          await uploadLocalData();
+          await syncAfterLogin();
         } catch (syncErr) {
           console.warn('[auth] sync after login failed:', syncErr.message);
+          Alert.alert('Signed in', 'You are signed in, but syncing your workouts failed. Open Settings and tap Sync now to try again.');
         }
         leave();
       } else {
@@ -56,7 +56,7 @@ export default function AuthScreen() {
           setTab('login');
           return;
         }
-        await uploadLocalData();
+        await syncAfterLogin();
         Alert.alert('Account created!', 'Your workouts are now backed up to your account.', [
           { text: 'OK', onPress: leave },
         ]);

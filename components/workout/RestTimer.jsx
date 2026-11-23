@@ -2,13 +2,15 @@ import { Modal, View, Text, TouchableOpacity, Pressable, StyleSheet } from 'reac
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, font } from '../../constants/theme';
 import { formatSecs, restRemaining, restIsRunning } from '../../utils/timers';
+import { useNow } from '../../utils/useNow';
 
 function tone(secs) {
   return secs > 30 ? colors.success : secs > 10 ? colors.warning : colors.danger;
 }
 
 // Small pill shown in the header while a rest is active. Never overlays the scroll area.
-export function RestChip({ rest, now, onPress }) {
+export function RestChip({ rest, onPress }) {
+  const now = useNow(!!rest && restIsRunning(rest));
   if (!rest) return null;
   const secs = restRemaining(rest, now);
   const running = restIsRunning(rest);
@@ -22,7 +24,8 @@ export function RestChip({ rest, now, onPress }) {
 }
 
 // Full controls, opened by tapping the chip. Tap outside or the chevron to minimise it again.
-export function RestSheet({ visible, rest, now, onClose, onAdjust, onToggle, onSkip }) {
+export function RestSheet({ visible, rest, onClose, onAdjust, onToggle, onSkip }) {
+  const now = useNow(visible && !!rest && restIsRunning(rest));
   const secs = restRemaining(rest, now);
   const running = restIsRunning(rest);
   const c = running ? tone(secs) : colors.textDim;

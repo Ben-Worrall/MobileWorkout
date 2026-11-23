@@ -1,18 +1,15 @@
 import { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, font, muscleColor } from '../../constants/theme';
 import {
-  getVolumeByMuscle, getMuscleVolumeOverTime, getPersonalRecords, getSessions, getWeeklyFrequency,
+  getVolumeByMuscle, getMuscleVolumeOverTime, getPersonalRecords, countSessionsSince, getWeeklyFrequency,
   getMuscleStatsByWeek, getMuscleTotalsBetween,
 } from '../../utils/database';
 import OverviewChart from '../../components/OverviewChart';
 import { useUnit } from '../../context/UnitContext';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const CHART_W = SCREEN_W - spacing.lg * 2 - 2;
 
 const PERIODS = [
   { label: '1M', days: 30 },
@@ -31,9 +28,6 @@ function LineChart({ data, color, height = 120 }) {
     );
   }
   const max = Math.max(...data.map(d => d.value));
-  const min = Math.min(...data.map(d => d.value));
-  const range = max - min || 1;
-  const flat = max === min;
 
   return (
     <View style={{ height, position: 'relative' }}>
@@ -101,15 +95,15 @@ export default function ProgressScreen() {
   );
 
   async function load() {
-    const [vol, records, sessions, weekly] = await Promise.all([
+    const [vol, records, sessionCount, weekly] = await Promise.all([
       getVolumeByMuscle(period.days),
       getPersonalRecords(),
-      getSessions(200),
+      countSessionsSince(period.days),
       getWeeklyFrequency(12),
     ]);
     setVolumeByMuscle(vol);
     setPrs(records.slice(0, 20));
-    setTotalSessions(sessions.filter(s => Date.now() - s.started_at < period.days * 86400000).length);
+    setTotalSessions(sessionCount);
     setWeeklyData(weekly.map(w => ({ label: w.week?.slice(5) || '', value: w.workouts || 0 })));
 
     const now = Date.now();
@@ -127,8 +121,6 @@ export default function ProgressScreen() {
         label: d.workout_date?.slice(5) || '',
         value: d.volume || 0,
       })));
-    } else {
-      setChartData(weeklyData);
     }
   }
 

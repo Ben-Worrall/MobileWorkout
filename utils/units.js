@@ -27,7 +27,7 @@ export function makeFormatters(unit) {
     // text typed by the user -> kilograms for storage (0 if empty/invalid)
     parseKg: str => {
       const n = parseFloat(String(str == null ? '' : str).replace(',', '.'));
-      return n > 0 ? unitToKg(n, unit) : 0;
+      return n > 0 ? Math.round(unitToKg(n, unit) * 100) / 100 : 0;
     },
     toDisp: kg => (kg == null ? null : kgToUnit(Number(kg), unit)),
   };

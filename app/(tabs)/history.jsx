@@ -14,11 +14,6 @@ function formatDuration(ms) {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-function formatVolume(v) {
-  if (!v) return '';
-  return v >= 1000 ? `${Math.round(v / 100) / 10}k kg` : `${Math.round(v)} kg`;
-}
-
 function dayLabel(ts) {
   return new Date(ts).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
 }

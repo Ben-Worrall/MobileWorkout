@@ -59,9 +59,6 @@ function SimpleChart({ data, color, valueKey = 'volume', height = 110 }) {
   }
   const values = data.map(d => d[valueKey] || 0);
   const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-  const flat = max === min;
 
   return (
     <View style={{ height }}>

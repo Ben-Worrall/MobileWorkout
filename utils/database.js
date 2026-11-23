@@ -151,11 +151,6 @@ export async function getAllExercises() {
   return db.getAllAsync('SELECT * FROM exercises ORDER BY muscle, name');
 }
 
-export async function getCustomExercises() {
-  const db = await getDb();
-  return db.getAllAsync('SELECT * FROM exercises WHERE is_custom = 1 ORDER BY name');
-}
-
 export async function addCustomExercise({ id, name, muscle, category, equipment, notes, isUnilateral }) {
   const db = await getDb();
   const uni = isUnilateral ? 1 : 0;
@@ -188,7 +183,13 @@ export async function exerciseNameExists(name, exceptId = null) {
 
 export async function deleteCustomExercise(id) {
   const db = await getDb();
-  await db.runAsync('DELETE FROM exercises WHERE id = ? AND is_custom = 1', [id]);
+  // Routines may still reference this exercise; remove those links first or the foreign key blocks the delete.
+  const links = await db.getAllAsync('SELECT id FROM template_exercises WHERE exercise_id = ?', [id]);
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM template_exercises WHERE exercise_id = ?', [id]);
+    await db.runAsync('DELETE FROM exercises WHERE id = ? AND is_custom = 1', [id]);
+  });
+  for (const l of links) syncDelete('template_exercises', l.id);
   syncDelete('exercises', id);
 }
 
@@ -225,27 +226,49 @@ export async function getTemplate(id) {
 
 export async function saveTemplate({ id, name, description, color, exercises }) {
   const db = await getDb();
-  await db.runAsync(
-    'INSERT OR REPLACE INTO workout_templates (id, name, description, color) VALUES (?, ?, ?, ?)',
-    [id, name, description || null, color || '#4d9fff']
-  );
-  syncRecord('workout_templates', { id, name, description: description || null, color: color || '#4d9fff' });
-  await db.runAsync('DELETE FROM template_exercises WHERE template_id = ?', [id]);
-  for (let i = 0; i < exercises.length; i++) {
-    const ex = exercises[i];
-    const teId = uid();
+  const rows = exercises.map((ex, i) => ({
+    id: uid(),
+    template_id: id,
+    exercise_id: ex.exercise_id || ex.id,
+    default_sets: ex.default_sets || 3,
+    default_reps: ex.default_reps || 10,
+    sort_order: i,
+  }));
+  const prior = await db.getAllAsync('SELECT id FROM template_exercises WHERE template_id = ?', [id]);
+
+  // One transaction: a failure halfway can no longer leave a routine without its exercises.
+  await db.withTransactionAsync(async () => {
     await db.runAsync(
-      'INSERT INTO template_exercises (id, template_id, exercise_id, default_sets, default_reps, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
-      [teId, id, ex.exercise_id || ex.id, ex.default_sets || 3, ex.default_reps || 10, i]
+      `INSERT INTO workout_templates (id, name, description, color) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, color = excluded.color`,
+      [id, name, description || null, color || '#4d9fff']
     );
-    syncRecord('template_exercises', { id: teId, template_id: id, exercise_id: ex.exercise_id || ex.id, default_sets: ex.default_sets || 3, default_reps: ex.default_reps || 10, sort_order: i });
-  }
+    await db.runAsync('DELETE FROM template_exercises WHERE template_id = ?', [id]);
+    for (const r of rows) {
+      await db.runAsync(
+        'INSERT INTO template_exercises (id, template_id, exercise_id, default_sets, default_reps, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+        [r.id, r.template_id, r.exercise_id, r.default_sets, r.default_reps, r.sort_order]
+      );
+    }
+  });
+
+  syncRecord('workout_templates', { id, name, description: description || null, color: color || '#4d9fff' });
+  for (const p of prior) syncDelete('template_exercises', p.id); // old rows would otherwise pile up in the cloud on every edit
+  for (const r of rows) syncRecord('template_exercises', r);
 }
 
 export async function deleteTemplate(id) {
   const db = await getDb();
-  await db.runAsync('DELETE FROM workout_templates WHERE id = ?', [id]);
-  syncDelete('workout_templates', id);
+  const planned = await db.getAllAsync('SELECT id FROM scheduled_workouts WHERE template_id = ? AND completed = 0', [id]);
+  // Past workouts and completed schedule entries keep their history; they just stop pointing at the deleted routine.
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE workout_sessions SET template_id = NULL WHERE template_id = ?', [id]);
+    await db.runAsync('DELETE FROM scheduled_workouts WHERE template_id = ? AND completed = 0', [id]);
+    await db.runAsync('UPDATE scheduled_workouts SET template_id = NULL WHERE template_id = ?', [id]);
+    await db.runAsync('DELETE FROM workout_templates WHERE id = ?', [id]);
+  });
+  for (const p of planned) syncDelete('scheduled_workouts', p.id);
+  syncDelete('workout_templates', id); // cloud foreign key removes its template_exercises
 }
 
 // ── Sessions ─────────────────────────────────────────────────────
@@ -256,6 +279,27 @@ export async function getSessions(limit = 50) {
     'SELECT * FROM workout_sessions WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT ?',
     [limit]
   );
+}
+
+export async function countSessionsSince(days) {
+  const db = await getDb();
+  const row = await db.getFirstAsync(
+    'SELECT COUNT(*) AS c FROM workout_sessions WHERE finished_at IS NOT NULL AND started_at >= ?',
+    [Date.now() - days * 86400000]
+  );
+  return row ? row.c : 0;
+}
+
+// Removes everything that belongs to the previous account (used when a different account signs in on this device).
+export async function clearLocalUserData() {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    for (const t of ['logged_sets', 'workout_sessions', 'scheduled_workouts', 'template_exercises', 'workout_templates']) {
+      await db.runAsync(`DELETE FROM ${t}`);
+    }
+    await db.runAsync('DELETE FROM exercises WHERE is_custom = 1');
+    await db.runAsync("DELETE FROM user_settings WHERE key = 'active_workout'");
+  });
 }
 
 export async function getSession(id) {
@@ -354,6 +398,8 @@ export async function markScheduledComplete(id, sessionId) {
     'UPDATE scheduled_workouts SET completed = 1, session_id = ? WHERE id = ?',
     [sessionId, id]
   );
+  const row = await db.getFirstAsync('SELECT * FROM scheduled_workouts WHERE id = ?', [id]);
+  if (row) syncRecord('scheduled_workouts', row);
 }
 
 export async function deleteScheduled(id) {
@@ -384,24 +430,6 @@ export async function getVolumeByMuscle(days = 30) {
   `, [since]);
 }
 
-export async function getVolumeOverTime(exerciseId, days = 90) {
-  const db = await getDb();
-  const since = Date.now() - days * 86400000;
-  return db.getAllAsync(`
-    SELECT
-      date(ws.started_at / 1000, 'unixepoch') as workout_date,
-      SUM(ls.weight * ls.reps) as volume,
-      MAX(ls.weight) as max_weight,
-      SUM(ls.reps) as total_reps,
-      ${SET_COUNT} as sets
-    FROM logged_sets ls
-    JOIN workout_sessions ws ON ws.id = ls.session_id
-    WHERE ls.exercise_id = ? AND ws.started_at >= ? AND ws.finished_at IS NOT NULL
-    GROUP BY workout_date
-    ORDER BY workout_date ASC
-  `, [exerciseId, since]);
-}
-
 export async function getMuscleVolumeOverTime(muscle, days = 90) {
   const db = await getDb();
   const since = Date.now() - days * 86400000;
@@ -426,6 +454,7 @@ export async function getPersonalRecords() {
       MAX(ls.weight) as max_weight,
       MAX(ls.reps) as max_reps
     FROM logged_sets ls
+    JOIN workout_sessions ws ON ws.id = ls.session_id AND ws.finished_at IS NOT NULL
     LEFT JOIN exercises e ON e.id = ls.exercise_id
     WHERE ls.weight > 0
     GROUP BY ls.exercise_id
@@ -437,13 +466,9 @@ export async function getWeeklyFrequency(weeks = 12) {
   const db = await getDb();
   const since = Date.now() - weeks * 7 * 86400000;
   return db.getAllAsync(`
-    SELECT
-      strftime('%Y-W%W', ws.started_at / 1000, 'unixepoch') as week,
-      COUNT(*) as workouts,
-      SUM(CASE WHEN ls.session_id IS NOT NULL THEN 1 ELSE 0 END) as total_sets
-    FROM workout_sessions ws
-    LEFT JOIN logged_sets ls ON ls.session_id = ws.id
-    WHERE ws.started_at >= ? AND ws.finished_at IS NOT NULL
+    SELECT strftime('%Y-W%W', started_at / 1000, 'unixepoch') as week, COUNT(*) as workouts
+    FROM workout_sessions
+    WHERE started_at >= ? AND finished_at IS NOT NULL
     GROUP BY week
     ORDER BY week ASC
   `, [since]);

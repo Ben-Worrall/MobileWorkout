@@ -58,9 +58,10 @@ export default function HomeScreen() {
   );
 
   async function load() {
-    const today = new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const [s, v, sugg, sched] = await Promise.all([
-      getSessions(20),
+      getSessions(60),
       getVolumeByMuscle(30),
       getSuggestions(),
       getScheduledWorkouts(today, today),

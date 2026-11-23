@@ -6,7 +6,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing, radius, font, muscleColor } from '../constants/theme';
+import { colors, spacing, radius, font } from '../constants/theme';
 import { getSession, updateSet, updateSession, deleteSet, logSet, uid } from '../utils/database';
 import RirPicker from '../components/workout/RirPicker';
 import { useUnit } from '../context/UnitContext';

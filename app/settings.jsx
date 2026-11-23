@@ -9,7 +9,7 @@ import { APP_VERSION } from '../constants/version';
 import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useUnit } from '../context/UnitContext';
-import { uploadLocalData, downloadCloudData } from '../utils/sync';
+import { syncAfterLogin, uploadLocalData } from '../utils/sync';
 import { getSetting, setSetting } from '../utils/database';
 
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/Ben-Worrall/MobileWorkout/releases/latest';
@@ -133,7 +133,7 @@ export default function Settings() {
         flags: 1,
         type: 'application/vnd.android.package-archive',
       });
-    } catch (e) {
+    } catch {
       Alert.alert('Download failed', 'Could not download the update. Try again or visit the website.', [
         { text: 'Open Website', onPress: () => Linking.openURL(WEBSITE_URL) },
         { text: 'Cancel', style: 'cancel' },
@@ -253,8 +253,7 @@ export default function Settings() {
                 iconColor={colors.success}
                 onPress={async () => {
                   try {
-                    await downloadCloudData();
-                    await uploadLocalData();
+                    await syncAfterLogin();
                     Alert.alert('Synced', 'Your workouts are backed up to your account.');
                   } catch (e) {
                     Alert.alert('Sync failed', e.message);
@@ -267,9 +266,16 @@ export default function Settings() {
                 label="Sign Out"
                 iconColor={colors.danger}
                 onPress={() =>
-                  Alert.alert('Sign Out', 'Your data stays on this device.', [
+                  Alert.alert('Sign Out', 'Your workouts are backed up to your account. They stay on this device until a different account signs in.', [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+                    {
+                      text: 'Sign Out',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try { await uploadLocalData(); } catch {} // best effort: back up anything not synced yet
+                        signOut();
+                      },
+                    },
                   ])
                 }
               />

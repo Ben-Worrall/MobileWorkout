@@ -7,7 +7,7 @@ import { colors, spacing, radius, font } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import {
   getMyProfile, saveUsername, setShareProgress, sendFriendRequest, respondToRequest,
-  removeFriendship, listFriends, normalizeUsername, USERNAME_RULE,
+  removeFriendship, listFriends, USERNAME_RULE,
 } from '../utils/social';
 
 export default function FriendsScreen() {

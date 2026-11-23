@@ -961,8 +961,6 @@ export const BUILTIN_EXERCISES = [...HAND_EXERCISES, ...EXTRA_EXERCISES, ...GENE
   UNILATERAL_IDS.has(e.id) ? { ...e, unilateral: true } : e
 );
 
-export const CATEGORIES = ['All', 'Upper Body', 'Lower Body', 'Core', 'Cardio', 'Full Body'];
-
 export function categoryForMuscle(muscle) {
   if (['Legs', 'Glutes', 'Calves'].includes(muscle)) return 'Lower Body';
   if (muscle === 'Core') return 'Core';

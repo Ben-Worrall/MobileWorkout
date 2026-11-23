@@ -4,7 +4,7 @@ const RECOVERY_DAYS = {
   Chest: 2, Back: 2, Shoulders: 2,
   Biceps: 1, Triceps: 1,
   Legs: 2, Glutes: 2, Calves: 1,
-  Core: 1, Cardio: 0,
+  Core: 1,
 };
 
 export async function getSuggestions() {
@@ -39,13 +39,12 @@ export async function getSuggestions() {
     // Suggest most overdue muscle groups
     const topDue = musclesDue.slice(0, 3);
     if (topDue.length > 0) {
-      const muscleList = topDue.map(m => m.muscle).join(', ');
       suggestions.push({
         type: 'train',
         priority: 'high',
         icon: 'barbell',
         title: `Time to train ${topDue[0].muscle}`,
-        body: `${topDue[0].daysSince === 999 ? 'Never trained' : `${topDue[0].daysSince} days ago`}. Consider a ${topDue.map(m => m.muscle).join(' + ')} session.`,
+        body: `${topDue[0].daysSince === 999 ? 'Never trained' : `${topDue[0].daysSince} ${topDue[0].daysSince === 1 ? 'day' : 'days'} ago`}. Consider a ${topDue.map(m => m.muscle).join(' + ')} session.`,
         muscles: topDue.map(m => m.muscle),
       });
     }
