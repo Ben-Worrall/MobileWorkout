@@ -1,12 +1,14 @@
 import { supabase } from './supabase';
-import { getDb, getSetting, setSetting, seedExercises, clearLocalUserData } from './database';
+import {
+  getDb, getSetting, setSetting, seedExercises, clearLocalUserData, addTombstone, removeTombstone, getTombstones,
+} from './database';
 import { BUILTIN_EXERCISES } from '../constants/exercises';
 
 // All cloud writes go through one queue so they reach the server in the order they were made
 // (a routine must exist in the cloud before its exercises, a set after its workout, a delete after its last edit).
 let queue = Promise.resolve();
 function enqueue(task) {
-  queue = queue.then(task).catch(err => console.warn('[sync]', err && err.message ? err.message : err));
+  queue = queue.then(task).catch(err => { console.warn('[sync]', err && err.message ? err.message : err); markDirty(); });
   return queue;
 }
 
@@ -16,13 +18,21 @@ async function currentUserId() {
   return session && session.user ? session.user.id : null;
 }
 
+// "Dirty" = some change did not reach the cloud (usually because the phone was offline). It is retried on the
+// next app start / return to the app, see syncIfDirty().
+let dirty = null; // null = not read from storage yet
+function markDirty() {
+  dirty = true;
+  setSetting('sync_dirty', '1').catch(() => {});
+}
+
 // Sync a single record to Supabase. Fire-and-forget: never blocks the UI, silently skipped when signed out.
 export function syncRecord(table, record) {
   enqueue(async () => {
     const uid = await currentUserId();
     if (!uid) return;
     const { error } = await supabase.from(table).upsert({ ...record, user_id: uid }, { onConflict: 'id' });
-    if (error) console.warn(`[sync] ${table}:`, error.message);
+    if (error) { console.warn(`[sync] ${table}:`, error.message); markDirty(); }
   });
 }
 
@@ -30,9 +40,36 @@ export function syncDelete(table, id) {
   enqueue(async () => {
     const uid = await currentUserId();
     if (!uid) return;
+    await addTombstone(table, id); // remembered until the cloud confirms, so it cannot come back on a restore
     const { error } = await supabase.from(table).delete().eq('id', id).eq('user_id', uid);
-    if (error) console.warn(`[sync] delete ${table}:`, error.message);
+    if (error) { console.warn(`[sync] delete ${table}:`, error.message); markDirty(); return; }
+    await removeTombstone(table, id);
   });
+}
+
+async function flushDeletes() {
+  const uid = await currentUserId();
+  if (!uid) return;
+  for (const t of await getTombstones()) {
+    const { error } = await supabase.from(t.tbl).delete().eq('id', t.id).eq('user_id', uid);
+    if (error) throw new Error(`delete ${t.tbl}: ${error.message}`);
+    await removeTombstone(t.tbl, t.id);
+  }
+}
+
+// Called when the app opens or comes back to the foreground: pushes missed changes, does nothing if all is synced.
+export async function syncIfDirty() {
+  const uid = await currentUserId();
+  if (!uid) return;
+  if (dirty === null) dirty = (await getSetting('sync_dirty', '0')) === '1';
+  if (!dirty) return;
+  try {
+    await uploadLocalData();
+    dirty = false;
+    await setSetting('sync_dirty', '0');
+  } catch (e) {
+    console.warn('[sync] retry failed:', e && e.message);
+  }
 }
 
 async function upsertChunked(table, rows) {
@@ -47,6 +84,7 @@ export async function uploadLocalData() {
   const uid = await currentUserId();
   if (!uid) return;
   await queue; // let pending single-record writes land first
+  await flushDeletes();
 
   const db = await getDb();
   const mine = rows => rows.map(r => ({ ...r, user_id: uid }));
@@ -90,9 +128,12 @@ export async function downloadCloudData() {
     ['scheduled_workouts', ['id', 'template_id', 'date', 'completed', 'session_id', 'notes']],
   ];
 
+  const dead = new Set((await getTombstones()).map(t => t.tbl + ':' + t.id)); // deleted here, not yet deleted in the cloud
   const fetched = [];
   for (const [table, cols, keep] of plan) {
-    fetched.push([table, cols, (await fetchAll(table)).filter(r => (keep ? keep(r) : true))]);
+    fetched.push([table, cols, (await fetchAll(table)).filter(r => (keep ? keep(r) : true) && !dead.has(table + ':' + r.id)
+      && !(table === 'logged_sets' && dead.has('workout_sessions:' + r.session_id))
+      && !(table === 'template_exercises' && dead.has('workout_templates:' + r.template_id)))]);
   }
 
   let restored = 0;
@@ -124,4 +165,6 @@ export async function syncAfterLogin() {
   await uploadLocalData();
   await downloadCloudData();
   await setSetting('data_owner', uid);
+  dirty = false;
+  await setSetting('sync_dirty', '0');
 }

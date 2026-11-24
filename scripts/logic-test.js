@@ -42,7 +42,7 @@ exports.supabase = {
   auth: { getSession: async () => ({ data: { session } }) },
   from: name => ({
     upsert: async (rows) => { rows = [].concat(rows); log.push(['upsert', name, rows.length]); if (failTable === name) return { error: { message: 'boom' } }; for (const r of rows) tbl(name).set(r.id, { ...tbl(name).get(r.id), ...r }); return { error: null }; },
-    delete: () => ({ eq: (c1, v1) => ({ eq: async (c2, v2) => { log.push(['delete', name, v1]); tbl(name).delete(v1); return { error: null }; } }) }),
+    delete: () => ({ eq: (c1, v1) => ({ eq: async (c2, v2) => { log.push(['delete', name, v1]); if (failTable === name) return { error: { message: 'offline' } }; tbl(name).delete(v1); return { error: null }; } }) }),
     select: () => ({ order: () => ({ range: async (a, b) => ({ data: [...tbl(name).values()].slice(a, b + 1), error: null }) }) }),
   }),
 };`);
@@ -57,7 +57,7 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok 
 
 (async () => {
   const D = req('utils/database.js');
-  const S = req('utils/sync.js');
+  const S = require(path.join(out, 'utils/sync.js')); // same instance database.js already loaded
   const SB = require(path.join(out, 'utils/supabase.js'));
   const X = require(path.join(out, 'constants/exercises.js'));
   const db = await D.getDb();
@@ -164,6 +164,37 @@ const check = (name, ok, extra = '') => { ok ? pass++ : fail++; console.log((ok 
   check('local-only set is gone after switching accounts', (await count(`SELECT COUNT(*) c FROM logged_sets WHERE id='unsynced'`)) === 0);
   await D.clearLocalUserData();
   check('clearLocalUserData leaves built-in exercises', (await count('SELECT COUNT(*) c FROM exercises WHERE is_custom=0')) === X.BUILTIN_EXERCISES.length);
+
+  // ── deletes made offline, and automatic retry
+  {
+    SB.__setUser('user-1');
+    await D.createSession({ id: 'tomb1', name: 'T', templateId: null });
+    await D.logSet({ id: 'tomb1-a', sessionId: 'tomb1', exerciseId: 'ohp', exerciseName: 'OHP', setNumber: 1, weight: 40, reps: 5 });
+    await D.finishSession('tomb1', null);
+    await S.uploadLocalData();
+    check('setup: workout reached the cloud', SB.__cloud.workout_sessions.has('tomb1'));
+    SB.__setFail('workout_sessions');
+    await D.deleteSession('tomb1');
+    await new Promise(r => setTimeout(r, 100));
+    check('a delete that could not reach the cloud leaves a tombstone', (await count('SELECT COUNT(*) c FROM sync_tombstones')) === 1);
+    SB.__setFail(null);
+    await S.downloadCloudData();
+    check('a workout deleted offline is NOT restored from the cloud', (await count("SELECT COUNT(*) c FROM workout_sessions WHERE id='tomb1'")) === 0);
+    await S.uploadLocalData();
+    check('retry deletes it in the cloud and clears the tombstone', !SB.__cloud.workout_sessions.has('tomb1') && (await count('SELECT COUNT(*) c FROM sync_tombstones')) === 0);
+
+    SB.__setFail('workout_templates');
+    await D.saveTemplate({ id: 'tplR', name: 'Retry', exercises: [{ exercise_id: 'ohp' }] });
+    await new Promise(r => setTimeout(r, 100));
+    check('an edit made while offline is not in the cloud yet', !(SB.__cloud.workout_templates || new Map()).has('tplR'));
+    SB.__setFail(null);
+    await S.syncIfDirty();
+    check('syncIfDirty pushes the missed edit automatically', SB.__cloud.workout_templates.has('tplR'));
+    const before = SB.__log.length;
+    await S.syncIfDirty();
+    check('syncIfDirty does nothing when everything is synced', SB.__log.length === before);
+    check('history paging respects the limit', (await D.getSessionSummaries(1)).length === 1);
+  }
 
   // proof of the old bug: INSERT OR REPLACE on a parent row cascades and deletes its children
   {

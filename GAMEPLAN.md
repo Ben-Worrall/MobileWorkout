@@ -56,7 +56,7 @@ Fixed:
 - Weekly workouts count was multiplied by sets; Progress workouts count capped at 200; personal records included unfinished workouts; Home 'today' used UTC date; finishing a scheduled workout never synced; resumed unknown exercise showed 'Exercise'; keep-for-later now pauses the clock; double-tap save guards; sync failure after login is now shown.
 - Performance: the whole workout screen re-rendered twice a second while a timer ran; timers now tick in small components (utils/useNow.js, WorkoutClock).
 - Cleanup: removed unused code/imports/exports, unused dependency react-native-gifted-charts, dead CI workflows (build.yml ran on every push and failed), declared expo-file-system, website text updated, lb input rounding.
-Known limitations (not changed): fire-and-forget sync means edits made while offline reach the cloud only at the next Sync now/login; deleted-while-offline items can reappear on restore; History shows the latest 500 workouts; dates in charts are UTC.
+Limitations FIXED afterwards (same v1.3.1, unpublished): offline edits retry automatically on app open/return (sync_dirty + syncIfDirty); deletes made offline are remembered (sync_tombstones) so they are not restored and are retried; History has Load more (50 at a time); chart weeks/days use local time. logic-test now 48/48. Remaining known limit: if two phones edit the same account offline, the last sync wins per row.
 
 ## v1.3.0 WORK (friends + profiles + lb/kg)  <-- READ THIS FIRST, it is the current job
 ### RESUME HERE (v1.3.0)

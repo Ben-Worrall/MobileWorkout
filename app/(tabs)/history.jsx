@@ -29,15 +29,16 @@ function monthKey(ts) {
 export default function HistoryScreen() {
   const [sessions, setSessions] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [limit, setLimit] = useState(50);
   const { fmtVol } = useUnit();
 
   useFocusEffect(
     useCallback(() => {
-      getSessionSummaries().then(rows => {
+      getSessionSummaries(limit).then(rows => {
         setSessions(rows);
         setLoaded(true);
       });
-    }, [])
+    }, [limit])
   );
 
   const sections = [];
@@ -69,6 +70,11 @@ export default function HistoryScreen() {
           keyExtractor={item => item.id}
           contentContainerStyle={s.list}
           stickySectionHeadersEnabled={false}
+          ListFooterComponent={sessions.length >= limit ? (
+            <TouchableOpacity style={s.more} onPress={() => setLimit(l => l + 50)}>
+              <Text style={s.moreText}>Load more</Text>
+            </TouchableOpacity>
+          ) : null}
           showsVerticalScrollIndicator={false}
           renderSectionHeader={({ section }) => (
             <View style={s.sectionHeader}>
@@ -133,6 +139,8 @@ const s = StyleSheet.create({
   muscles: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm },
   muscleTag: { borderRadius: radius.sm, paddingHorizontal: 7, paddingVertical: 2 },
   muscleTagText: { fontSize: 10, fontWeight: '700' },
+  more: { alignItems: 'center', paddingVertical: spacing.md },
+  moreText: { color: colors.accent, fontWeight: '700', fontSize: font.base },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingBottom: 80 },
   emptyTitle: { fontSize: font.xl, fontWeight: '700', color: colors.textDim },
   emptySub: { fontSize: font.base, color: colors.textMuted },

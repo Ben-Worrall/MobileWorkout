@@ -123,6 +123,12 @@ async function initSchema(db) {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS sync_tombstones (
+      tbl TEXT NOT NULL,
+      id TEXT NOT NULL,
+      PRIMARY KEY (tbl, id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_logged_sets_session ON logged_sets(session_id);
     CREATE INDEX IF NOT EXISTS idx_logged_sets_exercise ON logged_sets(exercise_id);
     CREATE INDEX IF NOT EXISTS idx_logged_sets_created ON logged_sets(created_at);
@@ -290,6 +296,22 @@ export async function countSessionsSince(days) {
   return row ? row.c : 0;
 }
 
+// Deletes that could not reach the cloud yet (offline). They are retried later and are never restored meanwhile.
+export async function addTombstone(tbl, id) {
+  const db = await getDb();
+  await db.runAsync('INSERT OR IGNORE INTO sync_tombstones (tbl, id) VALUES (?, ?)', [tbl, id]);
+}
+
+export async function removeTombstone(tbl, id) {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM sync_tombstones WHERE tbl = ? AND id = ?', [tbl, id]);
+}
+
+export async function getTombstones() {
+  const db = await getDb();
+  return db.getAllAsync('SELECT tbl, id FROM sync_tombstones');
+}
+
 // Removes everything that belongs to the previous account (used when a different account signs in on this device).
 export async function clearLocalUserData() {
   const db = await getDb();
@@ -298,7 +320,8 @@ export async function clearLocalUserData() {
       await db.runAsync(`DELETE FROM ${t}`);
     }
     await db.runAsync('DELETE FROM exercises WHERE is_custom = 1');
-    await db.runAsync("DELETE FROM user_settings WHERE key = 'active_workout'");
+    await db.runAsync('DELETE FROM sync_tombstones');
+    await db.runAsync("DELETE FROM user_settings WHERE key IN ('active_workout', 'sync_dirty')");
   });
 }
 
@@ -435,7 +458,7 @@ export async function getMuscleVolumeOverTime(muscle, days = 90) {
   const since = Date.now() - days * 86400000;
   return db.getAllAsync(`
     SELECT
-      date(ws.started_at / 1000, 'unixepoch') as workout_date,
+      date(ws.started_at / 1000, 'unixepoch', 'localtime') as workout_date,
       SUM(ls.weight * ls.reps) as volume,
       ${SET_COUNT} as sets
     FROM logged_sets ls
@@ -466,7 +489,7 @@ export async function getWeeklyFrequency(weeks = 12) {
   const db = await getDb();
   const since = Date.now() - weeks * 7 * 86400000;
   return db.getAllAsync(`
-    SELECT strftime('%Y-W%W', started_at / 1000, 'unixepoch') as week, COUNT(*) as workouts
+    SELECT strftime('%Y-W%W', started_at / 1000, 'unixepoch', 'localtime') as week, COUNT(*) as workouts
     FROM workout_sessions
     WHERE started_at >= ? AND finished_at IS NOT NULL
     GROUP BY week
@@ -492,7 +515,7 @@ export async function getExerciseSessionStats(exerciseId, days = 365) {
   const since = Date.now() - days * 86400000;
   return db.getAllAsync(`
     SELECT ws.id AS session_id, ws.started_at,
-      date(ws.started_at / 1000, 'unixepoch') AS workout_date,
+      date(ws.started_at / 1000, 'unixepoch', 'localtime') AS workout_date,
       MAX(ls.weight) AS top_weight,
       SUM(ls.weight * ls.reps) AS volume,
       SUM(ls.reps) AS total_reps,
@@ -537,8 +560,8 @@ export async function getMuscleStatsByWeek(days = 90) {
   const since = Date.now() - days * 86400000;
   return db.getAllAsync(`
     SELECT e.muscle,
-      strftime('%Y-%W', ws.started_at / 1000, 'unixepoch') as week,
-      MIN(date(ws.started_at / 1000, 'unixepoch')) as week_start,
+      strftime('%Y-%W', ws.started_at / 1000, 'unixepoch', 'localtime') as week,
+      MIN(date(ws.started_at / 1000, 'unixepoch', 'localtime')) as week_start,
       SUM(ls.weight * ls.reps) as volume,
       ${SET_COUNT} as sets,
       AVG(ls.rir) as avg_rir,

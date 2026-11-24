@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, AppState } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../constants/theme';
@@ -7,6 +7,7 @@ import { getDb, seedExercises } from '../utils/database';
 import { BUILTIN_EXERCISES } from '../constants/exercises';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { UnitProvider } from '../context/UnitContext';
+import { syncIfDirty } from '../utils/sync';
 
 function AuthGate() {
   const { user, guest, ready } = useAuth();
@@ -26,6 +27,17 @@ function AuthGate() {
       <ActivityIndicator color={colors.accent} />
     </View>
   );
+}
+
+function SyncWatcher() {
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!user) return undefined;
+    syncIfDirty();
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') syncIfDirty(); });
+    return () => sub.remove();
+  }, [user]);
+  return null;
 }
 
 export default function RootLayout() {
@@ -65,6 +77,7 @@ export default function RootLayout() {
         />
       </Stack>
       <AuthGate />
+      <SyncWatcher />
     </UnitProvider>
     </AuthProvider>
   );
