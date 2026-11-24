@@ -4,7 +4,7 @@ READ THIS FIRST when resuming. Update the checkboxes and "RESUME HERE" as you go
 (tokens/keys are in the Claude memory file `project_supabase.md`; GitHub PAT: use `git credential fill` or ask the user).
 
 ## v1.3.1 POLISH REVIEW (2026-11-23, code read-through, no emulator)
-Status: code fixed + verified by PASS fresh schema has rir + side
+Status: PUBLISHED as v1.3.1 on 2026-11-24. Code fixed + verified by PASS fresh schema has rir + side
 PASS user_version is 1
 PASS getDb returns one shared handle
 PASS seed inserts the whole library  [346]
